@@ -173,7 +173,7 @@ pub fn computeSummary(allocator: std.mem.Allocator, invoices: []const models.Inv
 
     for (invoices) |inv| {
         var keyBuf: [512]u8 = undefined;
-        const keyZ = try std.fmt.bufPrintZ(&keyBuf, "{s}\x00{s}", .{ inv.category, inv.type });
+        const keyZ = try std.fmt.bufPrintZ(&keyBuf, "{s}|{s}", .{ inv.category, inv.type });
 
         if (map.get(keyZ)) |entry| {
             entry.count += 1;
@@ -181,10 +181,8 @@ pub fn computeSummary(allocator: std.mem.Allocator, invoices: []const models.Inv
             entry.total_tax += inv.tax;
             entry.total += inv.total;
         } else {
-            var catBuf: [128]u8 = undefined;
-            var typeBuf: [128]u8 = undefined;
-            const cat = try std.fmt.bufPrint(&catBuf, "{s}", .{inv.category});
-            const invType = try std.fmt.bufPrint(&typeBuf, "{s}", .{inv.type});
+            const cat = try allocator.dupe(u8, inv.category);
+            const invType = try allocator.dupe(u8, inv.type);
 
             const entry = try list.addOne();
             entry.* = .{

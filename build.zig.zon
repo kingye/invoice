@@ -8,5 +8,8 @@
         "src",
         "libs/sqlite3.c",
         "libs/sqlite3.h",
+        "libs/xlsxwriter",
+        "libs/xlsxwriter_src",
+        "libs/xlsxwriter_third_party",
     },
 }

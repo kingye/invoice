@@ -20,29 +20,6 @@ pub const Invoice = struct {
     created_at: []const u8 = "",
     updated_at: []const u8 = "",
 
-    pub fn fromRow(stmt: db_mod.Stmt, allocator: std.mem.Allocator) !Invoice {
-        _ = allocator;
-        return Invoice{
-            .id = stmt.columnInt64(0),
-            .number = stmt.columnText(1) orelse "",
-            .date = stmt.columnText(2) orelse "",
-            .type = stmt.columnText(3) orelse "",
-            .item_name = stmt.columnText(4) orelse "",
-            .amount = stmt.columnDouble(5),
-            .tax_rate = stmt.columnDouble(6),
-            .tax = stmt.columnDouble(7),
-            .total = stmt.columnDouble(8),
-            .seller_name = stmt.columnText(9) orelse "",
-            .seller_tax_id = stmt.columnText(10) orelse "",
-            .buyer_name = stmt.columnText(11) orelse "",
-            .buyer_tax_id = stmt.columnText(12) orelse "",
-            .category = stmt.columnText(13) orelse "",
-            .remark = stmt.columnText(14) orelse "",
-            .created_at = stmt.columnText(15) orelse "",
-            .updated_at = stmt.columnText(16) orelse "",
-        };
-    }
-
     pub fn fromRowAlloc(stmt: db_mod.Stmt, allocator: std.mem.Allocator) !Invoice {
         return Invoice{
             .id = stmt.columnInt64(0),
@@ -113,19 +90,6 @@ pub const Attachment = struct {
     file_size: i64 = 0,
     created_at: []const u8 = "",
 
-    pub fn fromRow(stmt: db_mod.Stmt, allocator: std.mem.Allocator) !Attachment {
-        _ = allocator;
-        return Attachment{
-            .id = stmt.columnInt64(0),
-            .invoice_id = stmt.columnInt64(1),
-            .filename = stmt.columnText(2) orelse "",
-            .filepath = stmt.columnText(3) orelse "",
-            .file_hash = stmt.columnText(4) orelse "",
-            .file_size = stmt.columnInt64(5),
-            .created_at = stmt.columnText(6) orelse "",
-        };
-    }
-
     pub fn fromRowAlloc(stmt: db_mod.Stmt, allocator: std.mem.Allocator) !Attachment {
         return Attachment{
             .id = stmt.columnInt64(0),
@@ -160,17 +124,6 @@ pub const Closing = struct {
     period: []const u8 = "",
     closed_at: []const u8 = "",
     archive_path: []const u8 = "",
-
-    pub fn fromRow(stmt: db_mod.Stmt, allocator: std.mem.Allocator) !Closing {
-        _ = allocator;
-        return Closing{
-            .id = stmt.columnInt64(0),
-            .type = stmt.columnText(1) orelse "",
-            .period = stmt.columnText(2) orelse "",
-            .closed_at = stmt.columnText(3) orelse "",
-            .archive_path = stmt.columnText(4) orelse "",
-        };
-    }
 
     pub fn fromRowAlloc(stmt: db_mod.Stmt, allocator: std.mem.Allocator) !Closing {
         return Closing{

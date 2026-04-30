@@ -108,17 +108,17 @@ pub fn checkPeriodClosed(database: *db_mod.Db, date: []const u8) !bool {
 }
 
 pub fn queryInvoicesForPeriod(allocator: std.mem.Allocator, database: *db_mod.Db, closeType: CloseType, period: []const u8) ![]models.Invoice {
+    _ = closeType;
     var list = std.ArrayList(models.Invoice).init(allocator);
     errdefer list.deinit();
 
-    var sqlBuf: [512]u8 = undefined;
-    const sql = switch (closeType) {
-        .month => try std.fmt.bufPrintZ(&sqlBuf, "SELECT id, number, date, type, item_name, amount, tax_rate, tax, total, seller_name, seller_tax_id, buyer_name, buyer_tax_id, category, remark, created_at, updated_at FROM invoices WHERE date LIKE '{s}-%' ORDER BY date, id", .{period}),
-        .year => try std.fmt.bufPrintZ(&sqlBuf, "SELECT id, number, date, type, item_name, amount, tax_rate, tax, total, seller_name, seller_tax_id, buyer_name, buyer_tax_id, category, remark, created_at, updated_at FROM invoices WHERE date LIKE '{s}-%' ORDER BY date, id", .{period}),
-    };
-
+    const sql = "SELECT id, number, date, type, item_name, amount, tax_rate, tax, total, seller_name, seller_tax_id, buyer_name, buyer_tax_id, category, remark, created_at, updated_at FROM invoices WHERE date LIKE ? ORDER BY date, id";
     const stmt = try database.prepare(sql);
     defer stmt.deinit();
+
+    var patternBuf: [64]u8 = undefined;
+    const pattern = try std.fmt.bufPrintZ(&patternBuf, "{s}-%", .{period});
+    try stmt.bindText(1, pattern);
 
     while (try stmt.step()) {
         const inv = try models.Invoice.fromRowAlloc(stmt, allocator);

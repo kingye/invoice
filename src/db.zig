@@ -32,11 +32,6 @@ pub const Db = struct {
         }
     }
 
-    pub fn execAlloc(self: Db, allocator: std.mem.Allocator, sql: [:0]const u8) !void {
-        _ = allocator;
-        try self.exec(sql);
-    }
-
     pub fn prepare(self: Db, sql: [:0]const u8) !Stmt {
         var stmt: ?*c.sqlite3_stmt = null;
         const rc = c.sqlite3_prepare_v2(self.db, sql, -1, &stmt, null);

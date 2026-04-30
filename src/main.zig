@@ -87,6 +87,15 @@ fn cmdAdd(writer: anytype, allocator: std.mem.Allocator, args: []const []const u
     const addArgs = try cli.parseAddArgs(allocator, args);
     defer allocator.free(addArgs.attach);
 
+    if (addArgs.number.len == 0) {
+        try writer.print("Error: --number is required\n", .{});
+        return;
+    }
+    if (addArgs.date.len == 0) {
+        try writer.print("Error: --date is required\n", .{});
+        return;
+    }
+
     var database = try openDb();
     defer database.close();
 
@@ -138,10 +147,17 @@ fn cmdList(writer: anytype, allocator: std.mem.Allocator, args: []const []const 
     const baseSql = "SELECT id, number, date, type, item_name, amount, tax_rate, tax, total, seller_name, seller_tax_id, buyer_name, buyer_tax_id, category, remark, created_at, updated_at FROM invoices";
     try sqlList.appendSlice(baseSql);
 
+    var bindIdx: i32 = 0;
+    var bindMonth: ?[]const u8 = null;
+    var bindYear: ?[]const u8 = null;
+    var bindCategory: ?[]const u8 = null;
+
     var hasWhere = false;
     if (listArgs.month.len > 0) {
         if (!hasWhere) try sqlList.appendSlice(" WHERE");
-        try sqlList.writer().print(" date LIKE '{s}-%'", .{listArgs.month});
+        try sqlList.appendSlice(" date LIKE ?");
+        bindIdx += 1;
+        bindMonth = listArgs.month;
         hasWhere = true;
     }
     if (listArgs.year.len > 0) {
@@ -150,7 +166,9 @@ fn cmdList(writer: anytype, allocator: std.mem.Allocator, args: []const []const 
         } else {
             try sqlList.appendSlice(" AND");
         }
-        try sqlList.writer().print(" date LIKE '{s}-%'", .{listArgs.year});
+        try sqlList.appendSlice(" date LIKE ?");
+        bindIdx += 1;
+        bindYear = listArgs.year;
         hasWhere = true;
     }
     if (listArgs.category.len > 0) {
@@ -159,7 +177,9 @@ fn cmdList(writer: anytype, allocator: std.mem.Allocator, args: []const []const 
         } else {
             try sqlList.appendSlice(" AND");
         }
-        try sqlList.writer().print(" category = '{s}'", .{listArgs.category});
+        try sqlList.appendSlice(" category = ?");
+        bindIdx += 1;
+        bindCategory = listArgs.category;
         hasWhere = true;
     }
 
@@ -170,6 +190,26 @@ fn cmdList(writer: anytype, allocator: std.mem.Allocator, args: []const []const 
 
     const stmt = try database.prepare(sqlZ);
     defer stmt.deinit();
+
+    var idx: i32 = 1;
+    if (bindMonth) |m| {
+        var buf: [64]u8 = undefined;
+        const pattern = try std.fmt.bufPrintZ(&buf, "{s}-%", .{m});
+        try stmt.bindText(idx, pattern);
+        idx += 1;
+    }
+    if (bindYear) |y| {
+        var buf: [64]u8 = undefined;
+        const pattern = try std.fmt.bufPrintZ(&buf, "{s}-%", .{y});
+        try stmt.bindText(idx, pattern);
+        idx += 1;
+    }
+    if (bindCategory) |c| {
+        var buf: [256]u8 = undefined;
+        const catZ = try std.fmt.bufPrintZ(&buf, "{s}", .{c});
+        try stmt.bindText(idx, catZ);
+        idx += 1;
+    }
 
     try writer.print("{s:>4}  {s:<12} {s:<12} {s:<10} {s:<12} {s:>10} {s:>6} {s:>8} {s:>10} {s:<16}\n", .{ "ID", "Number", "Date", "Type", "Item", "Amount", "Tax%", "Tax", "Total", "Seller" });
     try writer.print("{s:-<120}\n", .{""});
@@ -271,27 +311,206 @@ fn cmdEdit(writer: anytype, allocator: std.mem.Allocator, args: []const []const 
 
     try sqlList.appendSlice("UPDATE invoices SET updated_at = datetime('now', 'localtime')");
 
-    if (editArgs.number) |v| try sqlList.writer().print(", number = '{s}'", .{v});
-    if (editArgs.date) |v| try sqlList.writer().print(", date = '{s}'", .{v});
-    if (editArgs.type) |v| try sqlList.writer().print(", type = '{s}'", .{v});
-    if (editArgs.item_name) |v| try sqlList.writer().print(", item_name = '{s}'", .{v});
-    if (editArgs.amount) |v| try sqlList.writer().print(", amount = {d}", .{v});
-    if (editArgs.tax_rate) |v| try sqlList.writer().print(", tax_rate = {d}", .{v});
-    if (editArgs.tax) |v| try sqlList.writer().print(", tax = {d}", .{v});
-    if (editArgs.total) |v| try sqlList.writer().print(", total = {d}", .{v});
-    if (editArgs.seller_name) |v| try sqlList.writer().print(", seller_name = '{s}'", .{v});
-    if (editArgs.seller_tax_id) |v| try sqlList.writer().print(", seller_tax_id = '{s}'", .{v});
-    if (editArgs.buyer_name) |v| try sqlList.writer().print(", buyer_name = '{s}'", .{v});
-    if (editArgs.buyer_tax_id) |v| try sqlList.writer().print(", buyer_tax_id = '{s}'", .{v});
-    if (editArgs.category) |v| try sqlList.writer().print(", category = '{s}'", .{v});
-    if (editArgs.remark) |v| try sqlList.writer().print(", remark = '{s}'", .{v});
+    var bindIdx: i32 = 0;
+    const MaxBinds = 16;
+    var textBinds: [MaxBinds][]const u8 = undefined;
+    var doubleBinds: [MaxBinds]f64 = undefined;
+    var textCount: i32 = 0;
+    var doubleCount: i32 = 0;
 
-    try sqlList.writer().print(" WHERE id = {d}", .{editArgs.id});
+    if (editArgs.number) |v| {
+        try sqlList.appendSlice(", number = ?");
+        bindIdx += 1;
+        textBinds[@intCast(textCount)] = v;
+        textCount += 1;
+    }
+    if (editArgs.date) |v| {
+        try sqlList.appendSlice(", date = ?");
+        bindIdx += 1;
+        textBinds[@intCast(textCount)] = v;
+        textCount += 1;
+    }
+    if (editArgs.type) |v| {
+        try sqlList.appendSlice(", type = ?");
+        bindIdx += 1;
+        textBinds[@intCast(textCount)] = v;
+        textCount += 1;
+    }
+    if (editArgs.item_name) |v| {
+        try sqlList.appendSlice(", item_name = ?");
+        bindIdx += 1;
+        textBinds[@intCast(textCount)] = v;
+        textCount += 1;
+    }
+    if (editArgs.amount) |v| {
+        try sqlList.appendSlice(", amount = ?");
+        bindIdx += 1;
+        doubleBinds[@intCast(doubleCount)] = v;
+        doubleCount += 1;
+    }
+    if (editArgs.tax_rate) |v| {
+        try sqlList.appendSlice(", tax_rate = ?");
+        bindIdx += 1;
+        doubleBinds[@intCast(doubleCount)] = v;
+        doubleCount += 1;
+    }
+    if (editArgs.tax) |v| {
+        try sqlList.appendSlice(", tax = ?");
+        bindIdx += 1;
+        doubleBinds[@intCast(doubleCount)] = v;
+        doubleCount += 1;
+    }
+    if (editArgs.total) |v| {
+        try sqlList.appendSlice(", total = ?");
+        bindIdx += 1;
+        doubleBinds[@intCast(doubleCount)] = v;
+        doubleCount += 1;
+    }
+    if (editArgs.seller_name) |v| {
+        try sqlList.appendSlice(", seller_name = ?");
+        bindIdx += 1;
+        textBinds[@intCast(textCount)] = v;
+        textCount += 1;
+    }
+    if (editArgs.seller_tax_id) |v| {
+        try sqlList.appendSlice(", seller_tax_id = ?");
+        bindIdx += 1;
+        textBinds[@intCast(textCount)] = v;
+        textCount += 1;
+    }
+    if (editArgs.buyer_name) |v| {
+        try sqlList.appendSlice(", buyer_name = ?");
+        bindIdx += 1;
+        textBinds[@intCast(textCount)] = v;
+        textCount += 1;
+    }
+    if (editArgs.buyer_tax_id) |v| {
+        try sqlList.appendSlice(", buyer_tax_id = ?");
+        bindIdx += 1;
+        textBinds[@intCast(textCount)] = v;
+        textCount += 1;
+    }
+    if (editArgs.category) |v| {
+        try sqlList.appendSlice(", category = ?");
+        bindIdx += 1;
+        textBinds[@intCast(textCount)] = v;
+        textCount += 1;
+    }
+    if (editArgs.remark) |v| {
+        try sqlList.appendSlice(", remark = ?");
+        bindIdx += 1;
+        textBinds[@intCast(textCount)] = v;
+        textCount += 1;
+    }
+
+    try sqlList.appendSlice(" WHERE id = ?");
+    bindIdx += 1;
 
     const sqlZ = try sqlList.toOwnedSliceSentinel(0);
     defer allocator.free(sqlZ);
 
-    try database.exec(sqlZ);
+    const stmt = try database.prepare(sqlZ);
+    defer stmt.deinit();
+
+    var paramIdx: i32 = 1;
+    var tIdx: i32 = 0;
+    var dIdx: i32 = 0;
+
+    if (editArgs.number) |_| {
+        var buf: [256]u8 = undefined;
+        const z = try std.fmt.bufPrintZ(&buf, "{s}", .{textBinds[@intCast(tIdx)]});
+        try stmt.bindText(paramIdx, z);
+        paramIdx += 1;
+        tIdx += 1;
+    }
+    if (editArgs.date) |_| {
+        var buf: [64]u8 = undefined;
+        const z = try std.fmt.bufPrintZ(&buf, "{s}", .{textBinds[@intCast(tIdx)]});
+        try stmt.bindText(paramIdx, z);
+        paramIdx += 1;
+        tIdx += 1;
+    }
+    if (editArgs.type) |_| {
+        var buf: [128]u8 = undefined;
+        const z = try std.fmt.bufPrintZ(&buf, "{s}", .{textBinds[@intCast(tIdx)]});
+        try stmt.bindText(paramIdx, z);
+        paramIdx += 1;
+        tIdx += 1;
+    }
+    if (editArgs.item_name) |_| {
+        var buf: [256]u8 = undefined;
+        const z = try std.fmt.bufPrintZ(&buf, "{s}", .{textBinds[@intCast(tIdx)]});
+        try stmt.bindText(paramIdx, z);
+        paramIdx += 1;
+        tIdx += 1;
+    }
+    if (editArgs.amount) |_| {
+        try stmt.bindDouble(paramIdx, doubleBinds[@intCast(dIdx)]);
+        paramIdx += 1;
+        dIdx += 1;
+    }
+    if (editArgs.tax_rate) |_| {
+        try stmt.bindDouble(paramIdx, doubleBinds[@intCast(dIdx)]);
+        paramIdx += 1;
+        dIdx += 1;
+    }
+    if (editArgs.tax) |_| {
+        try stmt.bindDouble(paramIdx, doubleBinds[@intCast(dIdx)]);
+        paramIdx += 1;
+        dIdx += 1;
+    }
+    if (editArgs.total) |_| {
+        try stmt.bindDouble(paramIdx, doubleBinds[@intCast(dIdx)]);
+        paramIdx += 1;
+        dIdx += 1;
+    }
+    if (editArgs.seller_name) |_| {
+        var buf: [256]u8 = undefined;
+        const z = try std.fmt.bufPrintZ(&buf, "{s}", .{textBinds[@intCast(tIdx)]});
+        try stmt.bindText(paramIdx, z);
+        paramIdx += 1;
+        tIdx += 1;
+    }
+    if (editArgs.seller_tax_id) |_| {
+        var buf: [64]u8 = undefined;
+        const z = try std.fmt.bufPrintZ(&buf, "{s}", .{textBinds[@intCast(tIdx)]});
+        try stmt.bindText(paramIdx, z);
+        paramIdx += 1;
+        tIdx += 1;
+    }
+    if (editArgs.buyer_name) |_| {
+        var buf: [256]u8 = undefined;
+        const z = try std.fmt.bufPrintZ(&buf, "{s}", .{textBinds[@intCast(tIdx)]});
+        try stmt.bindText(paramIdx, z);
+        paramIdx += 1;
+        tIdx += 1;
+    }
+    if (editArgs.buyer_tax_id) |_| {
+        var buf: [64]u8 = undefined;
+        const z = try std.fmt.bufPrintZ(&buf, "{s}", .{textBinds[@intCast(tIdx)]});
+        try stmt.bindText(paramIdx, z);
+        paramIdx += 1;
+        tIdx += 1;
+    }
+    if (editArgs.category) |_| {
+        var buf: [128]u8 = undefined;
+        const z = try std.fmt.bufPrintZ(&buf, "{s}", .{textBinds[@intCast(tIdx)]});
+        try stmt.bindText(paramIdx, z);
+        paramIdx += 1;
+        tIdx += 1;
+    }
+    if (editArgs.remark) |_| {
+        var buf: [512]u8 = undefined;
+        const z = try std.fmt.bufPrintZ(&buf, "{s}", .{textBinds[@intCast(tIdx)]});
+        try stmt.bindText(paramIdx, z);
+        paramIdx += 1;
+        tIdx += 1;
+    }
+
+    try stmt.bindInt64(paramIdx, editArgs.id);
+
+    const rowDone = try stmt.step();
+    if (rowDone) return error.UnexpectedRow;
 
     const changed = database.changes();
     if (changed > 0) {
@@ -335,9 +554,13 @@ fn cmdDelete(writer: anytype, allocator: std.mem.Allocator, args: []const []cons
         return;
     }
 
-    var sqlBuf: [256]u8 = undefined;
-    const sql = try std.fmt.bufPrintZ(&sqlBuf, "DELETE FROM invoices WHERE id = {d}", .{deleteArgs.id});
-    try database.exec(sql);
+    const sql = "DELETE FROM invoices WHERE id = ?";
+    const stmt = try database.prepare(sql);
+    defer stmt.deinit();
+    try stmt.bindInt64(1, deleteArgs.id);
+
+    const rowDone = try stmt.step();
+    if (rowDone) return error.UnexpectedRow;
 
     const changed = database.changes();
     if (changed > 0) {
