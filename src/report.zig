@@ -173,7 +173,6 @@ pub fn computeSummary(allocator: std.mem.Allocator, invoices: []const models.Inv
 
     for (invoices) |inv| {
         var keyBuf: [512]u8 = undefined;
-        const key = try std.fmt.bufPrint(&keyBuf, "{s}\x00{s}", .{ inv.category, inv.type });
         const keyZ = try std.fmt.bufPrintZ(&keyBuf, "{s}\x00{s}", .{ inv.category, inv.type });
 
         if (map.get(keyZ)) |entry| {

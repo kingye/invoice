@@ -64,8 +64,8 @@ pub const Db = struct {
 
         const stmt = try self.prepare(sql);
         defer stmt.deinit();
-        _ = stmt.bindText(1, typeZ);
-        _ = stmt.bindText(2, periodZ);
+        try stmt.bindText(1, typeZ);
+        try stmt.bindText(2, periodZ);
 
         if (try stmt.step()) {
             const count = stmt.columnInt(0);

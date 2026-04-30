@@ -3,6 +3,9 @@ const db_mod = @import("db.zig");
 const models = @import("models.zig");
 const cli = @import("cli.zig");
 const attachment = @import("attachment.zig");
+const closing = @import("closing.zig");
+const report_mod = @import("report.zig");
+const archive_mod = @import("archive.zig");
 
 pub const version = "0.1.0";
 
@@ -51,10 +54,10 @@ pub fn main() !void {
             try cmdDelete(stdout, allocator, args[2..]);
         },
         .close => {
-            try stdout.print("Command 'close' not yet implemented\n", .{});
+            try cmdClose(stdout, allocator, args[2..]);
         },
         .export_cmd => {
-            try stdout.print("Command 'export' not yet implemented\n", .{});
+            try cmdExport(stdout, allocator, args[2..]);
         },
         .unknown => {
             try stdout.print("Unknown command: {s}\n", .{subCmd});
@@ -258,6 +261,11 @@ fn cmdEdit(writer: anytype, allocator: std.mem.Allocator, args: []const []const 
     var database = try openDb();
     defer database.close();
 
+    if (try checkInvoiceClosed(&database, editArgs.id)) {
+        try writer.print("Error: Invoice #{d} is in a closed period and cannot be modified\n", .{editArgs.id});
+        return;
+    }
+
     var sqlList = std.ArrayList(u8).init(allocator);
     defer sqlList.deinit();
 
@@ -322,6 +330,11 @@ fn cmdDelete(writer: anytype, allocator: std.mem.Allocator, args: []const []cons
     var database = try openDb();
     defer database.close();
 
+    if (try checkInvoiceClosed(&database, deleteArgs.id)) {
+        try writer.print("Error: Invoice #{d} is in a closed period and cannot be deleted\n", .{deleteArgs.id});
+        return;
+    }
+
     var sqlBuf: [256]u8 = undefined;
     const sql = try std.fmt.bufPrintZ(&sqlBuf, "DELETE FROM invoices WHERE id = {d}", .{deleteArgs.id});
     try database.exec(sql);
@@ -332,6 +345,128 @@ fn cmdDelete(writer: anytype, allocator: std.mem.Allocator, args: []const []cons
     } else {
         try writer.print("Invoice #{d} not found\n", .{deleteArgs.id});
     }
+}
+
+fn checkInvoiceClosed(database: *db_mod.Db, invoiceId: i64) !bool {
+    const sql = "SELECT date FROM invoices WHERE id = ?";
+    const stmt = try database.prepare(sql);
+    defer stmt.deinit();
+    try stmt.bindInt64(1, invoiceId);
+
+    if (try stmt.step()) {
+        const date = stmt.columnText(0) orelse return false;
+        const dateSlice = std.mem.sliceTo(date, 0);
+        return try closing.checkPeriodClosed(database, dateSlice);
+    }
+    return false;
+}
+
+fn cmdClose(writer: anytype, allocator: std.mem.Allocator, args: []const []const u8) !void {
+    const closeArgs = try cli.parseCloseArgs(args);
+
+    var closeType: closing.CloseType = undefined;
+    var period: []const u8 = "";
+
+    if (closeArgs.month.len > 0) {
+        period = closeArgs.month;
+        closeType = .month;
+    } else if (closeArgs.year.len > 0) {
+        period = closeArgs.year;
+        closeType = .year;
+    } else {
+        try writer.print("Usage: invoice close --month YYYY-MM or --year YYYY\n", .{});
+        return;
+    }
+
+    var cwdBuf: [std.fs.MAX_PATH_BYTES]u8 = undefined;
+    const cwd = try std.posix.getcwd(&cwdBuf);
+
+    var database = try openDb();
+    defer database.close();
+
+    closing.closePeriod(allocator, &database, cwd, closeType, period) catch |err| {
+        switch (err) {
+            error.AlreadyClosed => {
+                try writer.print("Error: Period {s} is already closed\n", .{period});
+                return;
+            },
+            error.NoInvoices => {
+                try writer.print("Error: No invoices found for period {s}\n", .{period});
+                return;
+            },
+            else => return err,
+        }
+    };
+
+    try writer.print("Period {s} closed successfully. Archive: .invoice/close_{s}.zip\n", .{ period, period });
+}
+
+fn cmdExport(writer: anytype, allocator: std.mem.Allocator, args: []const []const u8) !void {
+    const exportArgs = try cli.parseExportArgs(args);
+
+    var period: []const u8 = "";
+    const closeType: closing.CloseType = if (exportArgs.month.len > 0) .month else .year;
+
+    if (exportArgs.month.len > 0) {
+        period = exportArgs.month;
+    } else if (exportArgs.year.len > 0) {
+        period = exportArgs.year;
+    } else {
+        try writer.print("Usage: invoice export --month YYYY-MM or --year YYYY [--output DIR]\n", .{});
+        return;
+    }
+
+    var database = try openDb();
+    defer database.close();
+
+    const invoices = closing.queryInvoicesForPeriod(allocator, &database, closeType, period) catch |err| {
+        try writer.print("Error querying invoices: {any}\n", .{err});
+        return;
+    };
+    defer {
+        for (invoices) |inv| {
+            allocator.free(inv.number);
+            allocator.free(inv.date);
+            allocator.free(inv.type);
+            allocator.free(inv.item_name);
+            allocator.free(inv.seller_name);
+            allocator.free(inv.seller_tax_id);
+            allocator.free(inv.buyer_name);
+            allocator.free(inv.buyer_tax_id);
+            allocator.free(inv.category);
+            allocator.free(inv.remark);
+            allocator.free(inv.created_at);
+            allocator.free(inv.updated_at);
+        }
+        allocator.free(invoices);
+    }
+
+    if (invoices.len == 0) {
+        try writer.print("No invoices found for period {s}\n", .{period});
+        return;
+    }
+
+    const outputDir = if (exportArgs.output.len > 0) exportArgs.output else ".";
+
+    std.fs.cwd().makePath(outputDir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+
+    var detailPathBuf: [std.fs.MAX_PATH_BYTES]u8 = undefined;
+    var summaryPathBuf: [std.fs.MAX_PATH_BYTES]u8 = undefined;
+    const detailPath = try std.fmt.bufPrintZ(&detailPathBuf, "{s}/明细表_{s}.xlsx", .{ outputDir, period });
+    const summaryPath = try std.fmt.bufPrintZ(&summaryPathBuf, "{s}/汇总表_{s}.xlsx", .{ outputDir, period });
+
+    try report_mod.generateDetailReport(invoices, detailPath);
+
+    const summaryEntries = try report_mod.computeSummary(allocator, invoices);
+    defer allocator.free(summaryEntries);
+    try report_mod.generateSummaryReport(summaryEntries, summaryPath);
+
+    try writer.print("Reports exported to {s}/\n", .{outputDir});
+    try writer.print("  Detail: 明细表_{s}.xlsx\n", .{period});
+    try writer.print("  Summary: 汇总表_{s}.xlsx\n", .{period});
 }
 
 test "version is set" {
