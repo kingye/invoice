@@ -4,13 +4,16 @@
 
 ## 安装
 
-需要 Zig 0.13.0+、zlib 开发库、zip 命令行工具。
+需要 Zig 0.13.0+、zlib 开发库、zip 命令行工具、curl、unzip。
 
 ```bash
-# 安装依赖 (Debian/Ubuntu)
-sudo apt install zlib1g-dev zip
+# 克隆（含子模块）
+git clone --recurse-submodules <repo-url>
 
-# 构建
+# 安装依赖 (Debian/Ubuntu)
+sudo apt install zlib1g-dev zip curl
+
+# 构建（自动下载 SQLite amalgamation）
 zig build
 
 # 运行测试
