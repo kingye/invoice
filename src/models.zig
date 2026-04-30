@@ -66,18 +66,26 @@ pub const Invoice = struct {
     }
 
     pub fn bindParams(self: Invoice, stmt: db_mod.Stmt) !void {
-        var numBuf: [64]u8 = undefined;
-        const numberZ = try std.fmt.bufPrintZ("{s}", .{self.number});
-        const dateZ = try std.fmt.bufPrintZ("{s}", .{self.date});
-        const typeZ = try std.fmt.bufPrintZ("{s}", .{self.type});
-        const itemNameZ = try std.fmt.bufPrintZ("{s}", .{self.item_name});
-        const sellerNameZ = try std.fmt.bufPrintZ("{s}", .{self.seller_name});
-        const sellerTaxIdZ = try std.fmt.bufPrintZ("{s}", .{self.seller_tax_id});
-        const buyerNameZ = try std.fmt.bufPrintZ("{s}", .{self.buyer_name});
-        const buyerTaxIdZ = try std.fmt.bufPrintZ("{s}", .{self.buyer_tax_id});
-        const categoryZ = try std.fmt.bufPrintZ("{s}", .{self.category});
-        const remarkZ = try std.fmt.bufPrintZ("{s}", .{self.remark});
-        _ = &numBuf;
+        var numBuf: [256]u8 = undefined;
+        var dateBuf: [64]u8 = undefined;
+        var typeBuf: [128]u8 = undefined;
+        var itemBuf: [256]u8 = undefined;
+        var sellerBuf: [256]u8 = undefined;
+        var sellerTaxBuf: [64]u8 = undefined;
+        var buyerBuf: [256]u8 = undefined;
+        var buyerTaxBuf: [64]u8 = undefined;
+        var catBuf: [128]u8 = undefined;
+        var remarkBuf: [512]u8 = undefined;
+        const numberZ = try std.fmt.bufPrintZ(&numBuf, "{s}", .{self.number});
+        const dateZ = try std.fmt.bufPrintZ(&dateBuf, "{s}", .{self.date});
+        const typeZ = try std.fmt.bufPrintZ(&typeBuf, "{s}", .{self.type});
+        const itemNameZ = try std.fmt.bufPrintZ(&itemBuf, "{s}", .{self.item_name});
+        const sellerNameZ = try std.fmt.bufPrintZ(&sellerBuf, "{s}", .{self.seller_name});
+        const sellerTaxIdZ = try std.fmt.bufPrintZ(&sellerTaxBuf, "{s}", .{self.seller_tax_id});
+        const buyerNameZ = try std.fmt.bufPrintZ(&buyerBuf, "{s}", .{self.buyer_name});
+        const buyerTaxIdZ = try std.fmt.bufPrintZ(&buyerTaxBuf, "{s}", .{self.buyer_tax_id});
+        const categoryZ = try std.fmt.bufPrintZ(&catBuf, "{s}", .{self.category});
+        const remarkZ = try std.fmt.bufPrintZ(&remarkBuf, "{s}", .{self.remark});
 
         try stmt.bindText(1, numberZ);
         try stmt.bindText(2, dateZ);
@@ -131,9 +139,12 @@ pub const Attachment = struct {
     }
 
     pub fn bindParams(self: Attachment, stmt: db_mod.Stmt) !void {
-        const filenameZ = try std.fmt.bufPrintZ("{s}", .{self.filename});
-        const filepathZ = try std.fmt.bufPrintZ("{s}", .{self.filepath});
-        const hashZ = try std.fmt.bufPrintZ("{s}", .{self.file_hash});
+        var fnBuf: [512]u8 = undefined;
+        var fpBuf: [1024]u8 = undefined;
+        var hashBuf: [128]u8 = undefined;
+        const filenameZ = try std.fmt.bufPrintZ(&fnBuf, "{s}", .{self.filename});
+        const filepathZ = try std.fmt.bufPrintZ(&fpBuf, "{s}", .{self.filepath});
+        const hashZ = try std.fmt.bufPrintZ(&hashBuf, "{s}", .{self.file_hash});
 
         try stmt.bindInt64(1, self.invoice_id);
         try stmt.bindText(2, filenameZ);
@@ -172,9 +183,12 @@ pub const Closing = struct {
     }
 
     pub fn bindParams(self: Closing, stmt: db_mod.Stmt) !void {
-        const typeZ = try std.fmt.bufPrintZ("{s}", .{self.type});
-        const periodZ = try std.fmt.bufPrintZ("{s}", .{self.period});
-        const archiveZ = try std.fmt.bufPrintZ("{s}", .{self.archive_path});
+        var typeBuf: [64]u8 = undefined;
+        var periodBuf: [32]u8 = undefined;
+        var archiveBuf: [1024]u8 = undefined;
+        const typeZ = try std.fmt.bufPrintZ(&typeBuf, "{s}", .{self.type});
+        const periodZ = try std.fmt.bufPrintZ(&periodBuf, "{s}", .{self.period});
+        const archiveZ = try std.fmt.bufPrintZ(&archiveBuf, "{s}", .{self.archive_path});
 
         try stmt.bindText(1, typeZ);
         try stmt.bindText(2, periodZ);

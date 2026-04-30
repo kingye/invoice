@@ -57,8 +57,10 @@ pub const Db = struct {
 
     pub fn isClosed(self: Db, period: []const u8, closeType: []const u8) !bool {
         const sql = "SELECT COUNT(*) FROM closings WHERE type = ? AND period = ?";
-        const typeZ = try std.fmt.bufPrintZ("{s}", .{closeType});
-        const periodZ = try std.fmt.bufPrintZ("{s}", .{period});
+        var typeBuf: [64]u8 = undefined;
+        var periodBuf: [32]u8 = undefined;
+        const typeZ = try std.fmt.bufPrintZ(&typeBuf, "{s}", .{closeType});
+        const periodZ = try std.fmt.bufPrintZ(&periodBuf, "{s}", .{period});
 
         const stmt = try self.prepare(sql);
         defer stmt.deinit();
