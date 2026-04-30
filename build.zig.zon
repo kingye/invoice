@@ -1,0 +1,12 @@
+.{
+    .name = "invoice",
+    .version = "0.1.0",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "libs/sqlite3.c",
+        "libs/sqlite3.h",
+    },
+}
