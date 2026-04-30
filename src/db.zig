@@ -184,7 +184,8 @@ pub const Stmt = struct {
     pub fn columnText(self: Stmt, idx: i32) ?[:0]const u8 {
         const ptr = c.sqlite3_column_text(self.stmt, idx);
         if (ptr == null) return null;
-        const slice = std.mem.sliceTo(ptr.?[0..:0], 0);
+        const nonNull: [*:0]const u8 = @ptrCast(@alignCast(ptr));
+        const slice = std.mem.sliceTo(nonNull, 0);
         return slice;
     }
 
