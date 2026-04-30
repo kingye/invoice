@@ -2,6 +2,7 @@ const std = @import("std");
 const db_mod = @import("db.zig");
 const models = @import("models.zig");
 const cli = @import("cli.zig");
+const attachment = @import("attachment.zig");
 
 pub const version = "0.1.0";
 
@@ -112,41 +113,14 @@ fn cmdAdd(writer: anytype, allocator: std.mem.Allocator, args: []const []const u
     const id = database.lastInsertRowId();
 
     for (addArgs.attach) |attPath| {
-        try insertAttachment(allocator, &database, id, addArgs.number, attPath);
+        var cwdBuf2: [std.fs.MAX_PATH_BYTES]u8 = undefined;
+        const cwd2 = try std.posix.getcwd(&cwdBuf2);
+        attachment.addAttachment(allocator, &database, id, addArgs.number, cwd2, attPath) catch |err| {
+            std.log.err("Failed to add attachment '{s}': {any}", .{ attPath, err });
+        };
     }
 
     try writer.print("Invoice added with id={d}\n", .{id});
-}
-
-fn insertAttachment(allocator: std.mem.Allocator, database: *db_mod.Db, invoiceId: i64, invoiceNumber: []const u8, filePath: []const u8) !void {
-    _ = allocator;
-    _ = invoiceNumber;
-
-    const file = std.fs.cwd().openFile(filePath, .{}) catch |err| {
-        std.log.err("Cannot open attachment file '{s}': {any}", .{ filePath, err });
-        return;
-    };
-    defer file.close();
-
-    const stat = try file.stat();
-    const filename = std.fs.path.basename(filePath);
-
-    var nameBuf: [512]u8 = undefined;
-    var pathBuf: [1024]u8 = undefined;
-    const filenameZ = try std.fmt.bufPrintZ(&nameBuf, "{s}", .{filename});
-    const filepathZ = try std.fmt.bufPrintZ(&pathBuf, "{s}", .{filePath});
-
-    const sql = "INSERT INTO attachments (invoice_id, filename, filepath, file_hash, file_size) VALUES (?, ?, ?, '', ?)";
-    const stmt = try database.prepare(sql);
-    defer stmt.deinit();
-
-    try stmt.bindInt64(1, invoiceId);
-    try stmt.bindText(2, filenameZ);
-    try stmt.bindText(3, filepathZ);
-    try stmt.bindInt64(5, @intCast(stat.size));
-
-    const rowDone = try stmt.step();
-    if (rowDone) return error.UnexpectedRow;
 }
 
 fn cmdList(writer: anytype, allocator: std.mem.Allocator, args: []const []const u8) !void {
@@ -262,7 +236,7 @@ fn cmdShow(writer: anytype, allocator: std.mem.Allocator, args: []const []const 
         while (try attStmt.step()) {
             hasAttachments = true;
             const att = try models.Attachment.fromRowAlloc(attStmt, std.heap.page_allocator);
-            try writer.print("    - {s} ({d} bytes) {s}\n", .{ att.filename, att.file_size, att.filepath });
+            try writer.print("    - {s} ({d} bytes) sha256:{s}\n", .{ att.filename, att.file_size, att.file_hash });
         }
         if (!hasAttachments) {
             try writer.print("    (none)\n", .{});
@@ -326,7 +300,12 @@ fn cmdEdit(writer: anytype, allocator: std.mem.Allocator, args: []const []const 
 
         if (try invStmt.step()) {
             const number = invStmt.columnText(0) orelse "";
-            try insertAttachment(allocator, &database, editArgs.id, number, attPath);
+            var cwdBuf3: [std.fs.MAX_PATH_BYTES]u8 = undefined;
+            const cwd3 = try std.posix.getcwd(&cwdBuf3);
+            attachment.addAttachment(allocator, &database, editArgs.id, number, cwd3, attPath) catch |err| {
+                std.log.err("Failed to add attachment '{s}': {any}", .{ attPath, err });
+                continue;
+            };
             try writer.print("  Attachment added: {s}\n", .{attPath});
         }
     }
