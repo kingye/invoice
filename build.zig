@@ -73,6 +73,26 @@ pub fn build(b: *std.Build) void {
     xlsxwriter_dep.linkLibC();
     b.installArtifact(xlsxwriter_dep);
 
+    const miniz_dep = b.addStaticLibrary(.{
+        .name = "miniz",
+        .target = target,
+        .optimize = optimize,
+    });
+    miniz_dep.addCSourceFiles(.{
+        .files = &.{
+            "libs/miniz/miniz.c",
+            "libs/miniz/miniz_tdef.c",
+            "libs/miniz/miniz_tinfl.c",
+            "libs/miniz/miniz_zip.c",
+        },
+        .flags = &.{
+            "-DMINIZ_DISABLE_EXPORT",
+        },
+    });
+    miniz_dep.addIncludePath(b.path("libs/miniz"));
+    miniz_dep.linkLibC();
+    b.installArtifact(miniz_dep);
+
     const exe = b.addExecutable(.{
         .name = "invoice",
         .root_source_file = b.path("src/main.zig"),
@@ -81,8 +101,10 @@ pub fn build(b: *std.Build) void {
     });
     exe.addIncludePath(b.path("libs"));
     exe.addIncludePath(b.path("libs/xlsxwriter"));
+    exe.addIncludePath(b.path("libs/miniz"));
     exe.linkLibrary(sqlite_dep);
     exe.linkLibrary(xlsxwriter_dep);
+    exe.linkLibrary(miniz_dep);
     exe.linkLibC();
     b.installArtifact(exe);
 
@@ -101,8 +123,10 @@ pub fn build(b: *std.Build) void {
     });
     exe_tests.addIncludePath(b.path("libs"));
     exe_tests.addIncludePath(b.path("libs/xlsxwriter"));
+    exe_tests.addIncludePath(b.path("libs/miniz"));
     exe_tests.linkLibrary(sqlite_dep);
     exe_tests.linkLibrary(xlsxwriter_dep);
+    exe_tests.linkLibrary(miniz_dep);
     exe_tests.linkLibC();
 
     const run_exe_tests = b.addRunArtifact(exe_tests);
