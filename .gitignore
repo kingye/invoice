@@ -1,0 +1,7 @@
+.invoice/
+zig-cache/
+zig-out/
+.zig-cache/
+libs/sqlite3.c
+libs/sqlite3.h
+preview/
