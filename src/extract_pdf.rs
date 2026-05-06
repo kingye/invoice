@@ -14,49 +14,83 @@ pub fn extract_from_pdf(data: &[u8]) -> Result<models::Invoice, Box<dyn std::err
     Ok(inv)
 }
 
+fn get_info_dict(pdf: &lopdf::Document) -> Option<lopdf::Dictionary> {
+    match pdf.trailer.get(b"Info").ok()? {
+        lopdf::Object::Reference(ref_id) => match pdf.get_object(*ref_id) {
+            Ok(lopdf::Object::Dictionary(dict)) => Some(dict.clone()),
+            _ => None,
+        },
+        lopdf::Object::Dictionary(dict) => Some(dict.clone()),
+        _ => None,
+    }
+}
+
+fn decode_pdf_string(obj: &lopdf::Object) -> Option<String> {
+    match obj {
+        lopdf::Object::String(bytes, _format) => {
+            if bytes.len() >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF {
+                let utf16: Vec<u16> = bytes[2..]
+                    .chunks(2)
+                    .filter_map(|c| {
+                        if c.len() == 2 {
+                            Some(u16::from_be_bytes([c[0], c[1]]))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                String::from_utf16(&utf16).ok()
+            } else {
+                String::from_utf8(bytes.to_vec()).ok()
+            }
+        }
+        _ => obj.as_string().ok().map(|s| s.to_string()),
+    }
+}
+
 fn extract_metadata(pdf: &lopdf::Document, inv: &mut models::Invoice) {
-    if let Some(info_dict) = pdf.trailer.get(b"Info").ok().and_then(|o| o.as_dict().ok()) {
+    if let Some(info_dict) = get_info_dict(pdf) {
         if let Some(val) = info_dict
             .get(b"InvoiceNumber")
             .ok()
-            .and_then(|o| o.as_string().ok())
+            .and_then(|o| decode_pdf_string(o))
         {
-            inv.number = val.to_string();
+            inv.number = val;
         }
         if let Some(val) = info_dict
             .get(b"IssueTime")
             .ok()
-            .and_then(|o| o.as_string().ok())
+            .and_then(|o| decode_pdf_string(o))
         {
-            inv.date = val.to_string();
+            inv.date = val.replace("年", "-").replace("月", "-").replace("日", "");
         }
         if let Some(val) = info_dict
             .get(b"TotalAmWithoutTax")
             .ok()
-            .and_then(|o| o.as_string().ok())
+            .and_then(|o| decode_pdf_string(o))
         {
             inv.amount = val.parse().unwrap_or(0.0);
         }
         if let Some(val) = info_dict
             .get(b"TotalTaxAm")
             .ok()
-            .and_then(|o| o.as_string().ok())
+            .and_then(|o| decode_pdf_string(o))
         {
             inv.tax = val.parse().unwrap_or(0.0);
         }
         if let Some(val) = info_dict
             .get(b"TotalTax-includedAmount")
             .ok()
-            .and_then(|o| o.as_string().ok())
+            .and_then(|o| decode_pdf_string(o))
         {
             inv.total = val.parse().unwrap_or(0.0);
         }
         if let Some(val) = info_dict
             .get(b"SellerIdNum")
             .ok()
-            .and_then(|o| o.as_string().ok())
+            .and_then(|o| decode_pdf_string(o))
         {
-            inv.seller_tax_id = val.to_string();
+            inv.seller_tax_id = val;
         }
     }
 }
@@ -165,6 +199,28 @@ mod tests {
         assert!(result.is_ok());
         let inv = result.unwrap();
         assert!(inv.number.is_empty());
+    }
+
+    #[test]
+    fn test_decode_pdf_string_utf8() {
+        let obj = lopdf::Object::string_literal("hello");
+        let result = decode_pdf_string(&obj);
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_decode_pdf_string_utf16be() {
+        let input = "你好";
+        let utf16: Vec<u16> = input.encode_utf16().collect();
+        let mut bytes = vec![0xFE, 0xFF];
+        for code in utf16 {
+            bytes.push((code >> 8) as u8);
+            bytes.push((code & 0xFF) as u8);
+        }
+        let obj = lopdf::Object::string_literal(bytes);
+        let result = decode_pdf_string(&obj);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), "你好");
     }
 
     #[test]

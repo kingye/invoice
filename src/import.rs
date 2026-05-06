@@ -21,7 +21,7 @@ pub fn extract_invoice(path: &str) -> Result<models::Invoice, Box<dyn std::error
         _ => return Err(format!("Unsupported file format: .{}", ext).into()),
     };
 
-    if ext == "pdf" && inv.number.is_empty() {
+    if ext == "pdf" {
         if let Ok(supplement) = try_supplement(path) {
             merge_invoice(&mut inv, &supplement);
         }
