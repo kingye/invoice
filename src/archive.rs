@@ -52,8 +52,60 @@ fn add_file_to_zip<W: std::io::Write + std::io::Seek>(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use std::io::Read;
+
     #[test]
-    fn test_create_archive_placeholder() {
-        assert!(true);
+    fn test_create_archive_basic() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let detail_path = dir.path().join("明细表.xlsx");
+        let summary_path = dir.path().join("汇总表.xlsx");
+        std::fs::write(&detail_path, b"detail content").unwrap();
+        std::fs::write(&summary_path, b"summary content").unwrap();
+
+        let att_file = dir.path().join("contract.pdf");
+        std::fs::write(&att_file, b"pdf data").unwrap();
+
+        let output_path = dir.path().join("close_2026-04.zip");
+
+        let attachments = vec![AttachmentEntry {
+            invoice_number: "FP001".to_string(),
+            filepath: att_file.to_str().unwrap().to_string(),
+            filename: "contract.pdf".to_string(),
+        }];
+
+        let result = create_archive(
+            detail_path.to_str().unwrap(),
+            summary_path.to_str().unwrap(),
+            &attachments,
+            output_path.to_str().unwrap(),
+        );
+        assert!(result.is_ok());
+        assert!(output_path.exists());
+
+        let file = std::fs::File::open(&output_path).unwrap();
+        let mut archive = zip::ZipArchive::new(file).unwrap();
+        assert!(archive.by_name("明细表.xlsx").is_ok());
+        assert!(archive.by_name("汇总表.xlsx").is_ok());
+        assert!(archive.by_name("attachments/FP001/contract.pdf").is_ok());
+
+        let mut detail = archive.by_name("明细表.xlsx").unwrap();
+        let mut detail_content = String::new();
+        detail.read_to_string(&mut detail_content).unwrap();
+        assert_eq!(detail_content, "detail content");
+    }
+
+    #[test]
+    fn test_create_archive_missing_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let output_path = dir.path().join("output.zip");
+        let result = create_archive(
+            "/nonexistent/detail.xlsx",
+            "/nonexistent/summary.xlsx",
+            &[],
+            output_path.to_str().unwrap(),
+        );
+        assert!(result.is_err());
     }
 }

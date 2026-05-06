@@ -149,8 +149,54 @@ fn extract_page_text(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
-    fn test_extract_from_pdf_placeholder() {
-        assert!(true);
+    fn test_extract_from_pdf_empty_data() {
+        let result = extract_from_pdf(&[]);
+        assert!(result.is_ok());
+        let inv = result.unwrap();
+        assert!(inv.number.is_empty());
+    }
+
+    #[test]
+    fn test_extract_from_pdf_invalid_data() {
+        let result = extract_from_pdf(&[0x00, 0x01, 0x02, 0x03]);
+        assert!(result.is_ok());
+        let inv = result.unwrap();
+        assert!(inv.number.is_empty());
+    }
+
+    #[test]
+    fn test_extract_text_regex_number() {
+        let re = Regex::new(r"\d{20}").unwrap();
+        let text = "发票号码 24112000000015301234 金额";
+        assert!(re.find(text).is_some());
+        assert_eq!(re.find(text).unwrap().as_str(), "24112000000015301234");
+    }
+
+    #[test]
+    fn test_extract_text_regex_date() {
+        let re = Regex::new(r"\d{4}年\d{2}月\d{2}日").unwrap();
+        let text = "开票日期 2026年04月15日";
+        let m = re.find(text).unwrap().as_str();
+        let d = m.replace("年", "-").replace("月", "-").replace("日", "");
+        assert_eq!(d, "2026-04-15");
+    }
+
+    #[test]
+    fn test_extract_text_regex_seller() {
+        let re = Regex::new(r"销\s*名称：\s*(.+)").unwrap();
+        let text = "销名称：测试公司A";
+        let caps = re.captures(text).unwrap();
+        assert_eq!(caps.get(1).unwrap().as_str().trim(), "测试公司A");
+    }
+
+    #[test]
+    fn test_extract_text_regex_item() {
+        let re = Regex::new(r"\*[^*]+\*(.+)").unwrap();
+        let text = "项目 *服务*技术咨询费";
+        let caps = re.captures(text).unwrap();
+        assert_eq!(caps.get(1).unwrap().as_str().trim(), "技术咨询费");
     }
 }
