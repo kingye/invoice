@@ -57,8 +57,73 @@ pub fn add_attachment(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::db;
+
     #[test]
-    fn test_add_attachment_placeholder() {
-        assert!(true);
+    fn test_add_attachment_and_hash() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("invoice.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+        db::init_schema(&conn).unwrap();
+
+        let inv = models::Invoice {
+            number: "ATT001".to_string(),
+            date: "2026-05-01".to_string(),
+            ..Default::default()
+        };
+        let id = db::insert_invoice(&conn, &inv).unwrap();
+
+        let src_file = dir.path().join("test_file.txt");
+        std::fs::write(&src_file, b"hello world attachment").unwrap();
+
+        let orig_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir.path()).unwrap();
+
+        let result = add_attachment(&conn, id, "ATT001", src_file.to_str().unwrap());
+        assert!(result.is_ok());
+
+        let atts = db::get_attachments_for_invoice(&conn, id).unwrap();
+        assert_eq!(atts.len(), 1);
+        assert_eq!(atts[0].filename, "test_file.txt");
+        assert_eq!(atts[0].file_size, 22);
+        assert!(!atts[0].file_hash.is_empty());
+
+        let dest_path = dir.path().join(".invoice/data/ATT001/test_file.txt");
+        assert!(dest_path.exists());
+        let content = std::fs::read(&dest_path).unwrap();
+        assert_eq!(content, b"hello world attachment");
+
+        let mut hasher = Sha256::new();
+        hasher.update(b"hello world attachment");
+        let expected_hash = format!("{:x}", hasher.finalize());
+        assert_eq!(atts[0].file_hash, expected_hash);
+
+        std::env::set_current_dir(&orig_dir).unwrap();
+    }
+
+    #[test]
+    fn test_add_attachment_file_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("invoice.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+        db::init_schema(&conn).unwrap();
+
+        let inv = models::Invoice {
+            number: "ATT002".to_string(),
+            date: "2026-05-01".to_string(),
+            ..Default::default()
+        };
+        let id = db::insert_invoice(&conn, &inv).unwrap();
+
+        let orig_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir.path()).unwrap();
+
+        let result = add_attachment(&conn, id, "ATT002", "/nonexistent/file.pdf");
+        assert!(result.is_err());
+
+        std::env::set_current_dir(&orig_dir).unwrap();
     }
 }
