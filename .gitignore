@@ -1,4 +1,6 @@
 .invoice/
+/target/
+*.db
 zig-cache/
 zig-out/
 .zig-cache/
