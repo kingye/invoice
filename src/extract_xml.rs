@@ -18,17 +18,25 @@ pub fn extract_from_xml(xml_content: &str) -> Result<models::Invoice, Box<dyn st
         };
     }
 
-    let einv_type_label = doc
+    let mut einv_type = String::new();
+    let mut vat_type = String::new();
+    for node in doc.descendants().filter(|n| n.has_tag_name("EInvoiceType")) {
+        if let Some(label) = node.descendants().find(|n| n.has_tag_name("LabelName")) {
+            einv_type = label.text().unwrap_or("").to_string();
+        }
+    }
+    for node in doc
         .descendants()
-        .filter(|n| n.has_tag_name("LabelName"))
-        .filter_map(|n| n.text())
-        .collect::<Vec<_>>();
-
-    let type_label: Vec<&str> = einv_type_label.iter().map(|s| *s).collect();
-    if type_label.len() >= 2 {
-        inv.inv_type = format!("电子发票（{}）", type_label[1]);
-    } else if type_label.len() == 1 {
-        inv.inv_type = format!("电子发票{}", type_label[0]);
+        .filter(|n| n.has_tag_name("GeneralOrSpecialVAT"))
+    {
+        if let Some(label) = node.descendants().find(|n| n.has_tag_name("LabelName")) {
+            vat_type = label.text().unwrap_or("").to_string();
+        }
+    }
+    if !einv_type.is_empty() && !vat_type.is_empty() {
+        inv.inv_type = format!("{}（{}）", einv_type, vat_type);
+    } else if !einv_type.is_empty() {
+        inv.inv_type = einv_type;
     }
 
     if let Some(node) = doc.descendants().find(|n| n.has_tag_name("ItemName")) {
@@ -116,7 +124,7 @@ mod tests {
             <Header>
                 <InherentLabel>
                     <EInvoiceType>
-                        <LabelName>是否蓝字发票标志</LabelName>
+                        <LabelName>电子发票</LabelName>
                     </EInvoiceType>
                     <GeneralOrSpecialVAT>
                         <LabelName>普通发票</LabelName>
@@ -183,12 +191,12 @@ mod tests {
             <Header>
                 <InherentLabel>
                     <EInvoiceType>
-                        <LabelName>普通发票</LabelName>
+                        <LabelName>电子发票</LabelName>
                     </EInvoiceType>
                 </InherentLabel>
             </Header>
         </EInvoice>"#;
         let inv = extract_from_xml(xml).unwrap();
-        assert_eq!(inv.inv_type, "电子发票普通发票");
+        assert_eq!(inv.inv_type, "电子发票");
     }
 }
