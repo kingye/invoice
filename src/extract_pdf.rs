@@ -153,14 +153,43 @@ fn extract_text(
         }
     }
 
+    if inv.seller_name.is_empty() || inv.buyer_name.is_empty() {
+        let re_names = Regex::new(
+            r"(\d{4}年\d{2}月\d{2}日)\s+(\S+)\s+([\x{4e00}-\x{9fff}][\x{4e00}-\x{9fff}\w()（）]+)\s+(9\d{14,17})",
+        )?;
+        if let Some(caps) = re_names.captures(&normalized) {
+            if inv.buyer_name.is_empty() {
+                inv.buyer_name = caps.get(2).unwrap().as_str().to_string();
+            }
+            if inv.seller_name.is_empty() {
+                inv.seller_name = caps.get(3).unwrap().as_str().to_string();
+            }
+            if inv.seller_tax_id.is_empty() {
+                inv.seller_tax_id = caps.get(4).unwrap().as_str().to_string();
+            }
+        }
+    }
+
+    if inv.seller_name.is_empty() || inv.buyer_name.is_empty() {
+        let re_names2 = Regex::new(
+            r"(\d{4}年\d{2}月\d{2}日)\s+(\S+)\s+([\x{4e00}-\x{9fff}][\x{4e00}-\x{9fff}\w()（）]+)",
+        )?;
+        if let Some(caps) = re_names2.captures(&normalized) {
+            if inv.buyer_name.is_empty() {
+                inv.buyer_name = caps.get(2).unwrap().as_str().to_string();
+            }
+            if inv.seller_name.is_empty() {
+                inv.seller_name = caps.get(3).unwrap().as_str().to_string();
+            }
+        }
+    }
+
     if inv.seller_name.is_empty() {
         let re = Regex::new(r"销\s*售\s*方.*?名称[：:]\s*(\S+)")?;
         if let Some(caps) = re.captures(&normalized) {
-            inv.seller_name = caps.get(1).unwrap().as_str().to_string();
-        } else {
-            let re2 = Regex::new(r"销\s*名称[：:]\s*(\S+)")?;
-            if let Some(caps) = re2.captures(&normalized) {
-                inv.seller_name = caps.get(1).unwrap().as_str().to_string();
+            let val = caps.get(1).unwrap().as_str();
+            if val != "名称" && val != "名称：" {
+                inv.seller_name = val.to_string();
             }
         }
     }
@@ -168,11 +197,9 @@ fn extract_text(
     if inv.buyer_name.is_empty() {
         let re = Regex::new(r"购\s*买\s*方.*?名称[：:]\s*(\S+)")?;
         if let Some(caps) = re.captures(&normalized) {
-            inv.buyer_name = caps.get(1).unwrap().as_str().to_string();
-        } else {
-            let re2 = Regex::new(r"购\s*名称[：:]\s*(\S+)")?;
-            if let Some(caps) = re2.captures(&normalized) {
-                inv.buyer_name = caps.get(1).unwrap().as_str().to_string();
+            let val = caps.get(1).unwrap().as_str();
+            if val != "名称" && val != "名称：" {
+                inv.buyer_name = val.to_string();
             }
         }
     }
@@ -198,14 +225,25 @@ fn extract_text(
     }
 
     if inv.amount == 0.0 {
-        let re = Regex::new(r"¥\s*(\d+\.?\d*)")?;
-        let amounts: Vec<f64> = re
+        let re_before = Regex::new(r"(\d+\.?\d*)\s*¥")?;
+        let amounts: Vec<f64> = re_before
             .captures_iter(&normalized)
             .filter_map(|c| c.get(1)?.as_str().parse().ok())
             .collect();
-        if amounts.len() >= 2 {
+        if !amounts.is_empty() {
             inv.amount = amounts[0];
-            inv.total = *amounts.last().unwrap();
+            if amounts.len() >= 2 {
+                inv.tax = amounts[1];
+            }
+        }
+
+        if inv.total == 0.0 {
+            let re_after = Regex::new(r"¥\s*(\d+\.?\d*)")?;
+            if let Some(caps) = re_after.captures(&normalized) {
+                if let Ok(val) = caps.get(1).unwrap().as_str().parse::<f64>() {
+                    inv.total = val;
+                }
+            }
         }
     }
 
@@ -308,18 +346,26 @@ mod tests {
 
     #[test]
     fn test_extract_text_regex_seller() {
-        let re = Regex::new(r"销\s*售\s*方.*?名称[：:]\s*(\S+)").unwrap();
-        let text = "销售方 信息 名称：上海壹佰米网络科技有限公司";
+        let re = Regex::new(
+            r"(\d{4}年\d{2}月\d{2}日)\s+(\S+)\s+([\x{4e00}-\x{9fff}][\x{4e00}-\x{9fff}\w()（）]+)\s+(9\d{14,17})",
+        ).unwrap();
+        let text = "2026年04月07日 ChengQing 上海星巴克咖啡经营有限公司 913100006074138050";
         let caps = re.captures(text).unwrap();
-        assert_eq!(caps.get(1).unwrap().as_str(), "上海壹佰米网络科技有限公司");
+        assert_eq!(caps.get(2).unwrap().as_str(), "ChengQing");
+        assert_eq!(caps.get(3).unwrap().as_str(), "上海星巴克咖啡经营有限公司");
+        assert_eq!(caps.get(4).unwrap().as_str(), "913100006074138050");
     }
 
     #[test]
     fn test_extract_text_regex_buyer() {
-        let re = Regex::new(r"购\s*买\s*方.*?名称[：:]\s*(\S+)").unwrap();
-        let text = "购买方 信息 名称：张三";
+        let re = Regex::new(
+            r"(\d{4}年\d{2}月\d{2}日)\s+(\S+)\s+([\x{4e00}-\x{9fff}][\x{4e00}-\x{9fff}\w()（）]+)",
+        )
+        .unwrap();
+        let text = "2026年04月07日 程青 上海兰心荟餐饮管理有限公司";
         let caps = re.captures(text).unwrap();
-        assert_eq!(caps.get(1).unwrap().as_str(), "张三");
+        assert_eq!(caps.get(2).unwrap().as_str(), "程青");
+        assert_eq!(caps.get(3).unwrap().as_str(), "上海兰心荟餐饮管理有限公司");
     }
 
     #[test]
