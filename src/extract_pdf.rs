@@ -108,7 +108,7 @@ fn extract_text(
         }
     }
 
-    if text.trim().is_empty() {
+    if text.trim().is_empty() || is_cid_font_content(&text) {
         return Ok(());
     }
 
@@ -149,6 +149,11 @@ fn extract_text(
     }
 
     Ok(())
+}
+
+fn is_cid_font_content(text: &str) -> bool {
+    let re_cid = Regex::new(r"<[0-9A-Fa-f]{4,}>").unwrap();
+    re_cid.find_iter(text).count() > 5
 }
 
 fn extract_page_text(
@@ -254,5 +259,13 @@ mod tests {
         let text = "项目 *服务*技术咨询费";
         let caps = re.captures(text).unwrap();
         assert_eq!(caps.get(1).unwrap().as_str().trim(), "技术咨询费");
+    }
+
+    #[test]
+    fn test_is_cid_font_content() {
+        let cid_text = "BT <00140015> <00160017> <00120013> <00180019> <00200021> <00220023> ET";
+        assert!(is_cid_font_content(cid_text));
+        let normal_text = "BT (Hello World) Tj ET";
+        assert!(!is_cid_font_content(normal_text));
     }
 }
