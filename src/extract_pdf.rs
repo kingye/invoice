@@ -50,47 +50,59 @@ fn decode_pdf_string(obj: &lopdf::Object) -> Option<String> {
 
 fn extract_metadata(pdf: &lopdf::Document, inv: &mut models::Invoice) {
     if let Some(info_dict) = get_info_dict(pdf) {
-        if let Some(val) = info_dict
-            .get(b"InvoiceNumber")
-            .ok()
-            .and_then(|o| decode_pdf_string(o))
-        {
-            inv.number = val;
+        if inv.number.is_empty() {
+            if let Some(val) = info_dict
+                .get(b"InvoiceNumber")
+                .ok()
+                .and_then(|o| decode_pdf_string(o))
+            {
+                inv.number = val;
+            }
         }
-        if let Some(val) = info_dict
-            .get(b"IssueTime")
-            .ok()
-            .and_then(|o| decode_pdf_string(o))
-        {
-            inv.date = val.replace("年", "-").replace("月", "-").replace("日", "");
+        if inv.date.is_empty() {
+            if let Some(val) = info_dict
+                .get(b"IssueTime")
+                .ok()
+                .and_then(|o| decode_pdf_string(o))
+            {
+                inv.date = val.replace("年", "-").replace("月", "-").replace("日", "");
+            }
         }
-        if let Some(val) = info_dict
-            .get(b"TotalAmWithoutTax")
-            .ok()
-            .and_then(|o| decode_pdf_string(o))
-        {
-            inv.amount = val.parse().unwrap_or(0.0);
+        if inv.amount == 0.0 {
+            if let Some(val) = info_dict
+                .get(b"TotalAmWithoutTax")
+                .ok()
+                .and_then(|o| decode_pdf_string(o))
+            {
+                inv.amount = val.parse().unwrap_or(0.0);
+            }
         }
-        if let Some(val) = info_dict
-            .get(b"TotalTaxAm")
-            .ok()
-            .and_then(|o| decode_pdf_string(o))
-        {
-            inv.tax = val.parse().unwrap_or(0.0);
+        if inv.tax == 0.0 {
+            if let Some(val) = info_dict
+                .get(b"TotalTaxAm")
+                .ok()
+                .and_then(|o| decode_pdf_string(o))
+            {
+                inv.tax = val.parse().unwrap_or(0.0);
+            }
         }
-        if let Some(val) = info_dict
-            .get(b"TotalTax-includedAmount")
-            .ok()
-            .and_then(|o| decode_pdf_string(o))
-        {
-            inv.total = val.parse().unwrap_or(0.0);
+        if inv.total == 0.0 {
+            if let Some(val) = info_dict
+                .get(b"TotalTax-includedAmount")
+                .ok()
+                .and_then(|o| decode_pdf_string(o))
+            {
+                inv.total = val.parse().unwrap_or(0.0);
+            }
         }
-        if let Some(val) = info_dict
-            .get(b"SellerIdNum")
-            .ok()
-            .and_then(|o| decode_pdf_string(o))
-        {
-            inv.seller_tax_id = val;
+        if inv.seller_tax_id.is_empty() {
+            if let Some(val) = info_dict
+                .get(b"SellerIdNum")
+                .ok()
+                .and_then(|o| decode_pdf_string(o))
+            {
+                inv.seller_tax_id = val;
+            }
         }
     }
 }
