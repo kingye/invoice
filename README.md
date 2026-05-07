@@ -1,26 +1,24 @@
 # invoice - 轻量级命令行记账系统
 
-基于 Zig 语言和 SQLite 构建的命令行发票管理工具，支持发票 CRUD、原始凭证关联、月结/年结报表生成（Excel）、ZIP 归档。
+基于 Rust 和 SQLite 构建的命令行发票管理工具，支持发票 CRUD、原始凭证关联、从 PDF/XML/OFD 自动导入发票信息、月结/年结报表生成（Excel）、ZIP 归档。
 
 ## 安装
 
-需要 Zig 0.13.0+、zlib 开发库、zip 命令行工具、curl、unzip。
+需要 Rust 1.70+ 和 C 编译器（用于 SQLite 静态链接）。
 
 ```bash
-# 克隆（含子模块）
-git clone --recurse-submodules <repo-url>
+# 克隆
+git clone <repo-url>
+cd invoice
 
-# 安装依赖 (Debian/Ubuntu)
-sudo apt install zlib1g-dev zip curl
-
-# 构建（自动下载 SQLite amalgamation）
-zig build
+# 构建
+cargo build --release
 
 # 运行测试
-zig build test
+cargo test
 ```
 
-构建产物在 `zig-out/bin/invoice`。
+构建产物在 `target/release/invoice`。
 
 ## 使用
 
@@ -31,6 +29,30 @@ invoice init
 ```
 
 在当前目录下创建 `.invoice/invoice.db`。
+
+### 从文件导入发票
+
+```bash
+# 从 PDF 导入
+invoice import ./invoice.pdf
+
+# 从 XML 导入
+invoice import ./invoice.xml
+
+# 从 OFD 导入
+invoice import ./invoice.ofd
+
+# 从 ZIP（含 XML）导入
+invoice import ./invoice.zip
+
+# 预览提取结果（不写入数据库）
+invoice import ./invoice.pdf --dry-run
+
+# 覆盖提取的字段
+invoice import ./invoice.pdf --category 服务 --remark 测试
+```
+
+导入时自动根据文件扩展名选择提取器。PDF 文本为空时自动查找同目录同名 `.xml` 或 `.ofd` 文件补充。
 
 ### 添加发票
 
@@ -139,33 +161,42 @@ invoice --version
 
 | 组件 | 技术 |
 |------|------|
-| 语言 | Zig 0.13.0 |
-| 数据库 | SQLite 3 (静态链接) |
-| Excel 生成 | libxlsxwriter (静态链接) |
-| ZIP 归档 | 系统 zip 命令 |
-| 附件校验 | SHA-256 |
-| 单二进制 | 所有 C 依赖静态链接 |
+| 语言 | Rust |
+| 数据库 | SQLite 3 (rusqlite + bundled) |
+| Excel 生成 | rust_xlsxwriter |
+| PDF 解析 | lopdf |
+| XML 解析 | roxmltree |
+| ZIP/OFD 解析 | zip crate |
+| CLI 解析 | clap |
+| 附件校验 | SHA-256 (sha2) |
+| 单二进制 | 所有依赖纯 Rust 或静态链接 |
 
 ### 模块结构
 
 ```
 src/
-├── main.zig        # 入口 + 命令路由
-├── cli.zig         # CLI 参数解析
-├── db.zig          # SQLite 数据库层
-├── models.zig      # 数据模型 (Invoice, Attachment, Closing)
-├── attachment.zig  # 凭证管理 (文件复制 + SHA-256)
-├── report.zig      # Excel 报表生成
-├── closing.zig     # 月结/年结逻辑
-└── archive.zig     # ZIP 归档
+├── main.rs        # 入口
+├── cli.rs         # CLI 命令定义和路由
+├── db.rs          # SQLite 数据库层
+├── models.rs      # 数据模型 (Invoice, Attachment, Closing)
+├── import.rs      # 发票导入核心逻辑（格式检测、提取、入库）
+├── extract_xml.rs # EInvoice XML 解析
+├── extract_pdf.rs # PDF 元数据+文本提取
+├── extract_ofd.rs # OFD(ZIP+XML) 解析
+├── attachment.rs  # 凭证管理 (文件复制 + SHA-256)
+├── report.rs      # Excel 报表生成
+├── archive.rs     # ZIP 归档
+└── closing.rs     # 月结/年结逻辑
 ```
 
 ## 设计决策
 
+- **PDF 是必须的原始凭证：** `invoice import <pdf>` 是主要入口，XML/OFD 是可选补充
+- **PDF 文本为空时自动查找同目录配套 XML/OFD：** 用户无需手动指定，自动提升提取质量
+- **优先使用 XML 数据：** XML 字段最完整可靠，PDF 元数据和文本作为降级方案
 - **凭证存储：** 复制到 `.invoice/data/` 目录，避免原文件移动/删除导致丢失
-- **数据库抽象：** `db.zig` 封装所有 SQL 操作，未来替换数据库只需修改此模块
 - **结账不可逆：** 已结账期间发票不可修改/删除，保证数据完整性
-- **发票类型自由文本：** 非枚举值，方便用户自定义扩展
+- **`--dry-run` 模式：** 提取结果先预览，确认后再写入，避免错误数据入库
 - **税率存储为小数：** 0.06 = 6%，显示时转换为百分比
 
 ## License
