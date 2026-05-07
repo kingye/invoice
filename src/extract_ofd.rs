@@ -98,6 +98,9 @@ fn extract_custom_data_from_ofd_xml(xml_content: &str, inv: &mut models::Invoice
         if let Some(v) = custom_data.get("价税合计") {
             inv.total = v.trim().parse().unwrap_or(0.0);
         }
+        if inv.total == 0.0 && inv.amount > 0.0 {
+            inv.total = inv.amount + inv.tax;
+        }
         if let Some(v) = custom_data.get("销售方纳税人识别号") {
             inv.seller_tax_id = v.clone();
         }
