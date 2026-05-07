@@ -10,24 +10,25 @@ pub fn extract_from_xml(xml_content: &str) -> Result<models::Invoice, Box<dyn st
         inv.number = node.text().unwrap_or("").to_string();
     }
     if let Some(node) = doc.descendants().find(|n| n.has_tag_name("IssueTime")) {
-        inv.date = node.text().unwrap_or("").to_string();
+        let raw_date = node.text().unwrap_or("").to_string();
+        inv.date = if raw_date.len() >= 10 {
+            raw_date[..10].to_string()
+        } else {
+            raw_date
+        };
     }
 
-    let label_name = doc
+    let einv_type_label = doc
         .descendants()
-        .find(|n| n.has_tag_name("LabelName"))
-        .and_then(|n| n.text())
-        .unwrap_or("")
-        .to_string();
-    let einv_type = doc
-        .descendants()
-        .find(|n| n.has_tag_name("EInvoiceType"))
-        .and_then(|n| n.text())
-        .unwrap_or("");
-    if !label_name.is_empty() {
-        inv.inv_type = format!("电子发票{}", label_name);
-    } else if !einv_type.is_empty() {
-        inv.inv_type = einv_type.to_string();
+        .filter(|n| n.has_tag_name("LabelName"))
+        .filter_map(|n| n.text())
+        .collect::<Vec<_>>();
+
+    let type_label: Vec<&str> = einv_type_label.iter().map(|s| *s).collect();
+    if type_label.len() >= 2 {
+        inv.inv_type = format!("电子发票（{}）", type_label[1]);
+    } else if type_label.len() == 1 {
+        inv.inv_type = format!("电子发票{}", type_label[0]);
     }
 
     if let Some(node) = doc.descendants().find(|n| n.has_tag_name("ItemName")) {
@@ -115,8 +116,11 @@ mod tests {
             <Header>
                 <InherentLabel>
                     <EInvoiceType>
-                        <LabelName>普通发票</LabelName>
+                        <LabelName>是否蓝字发票标志</LabelName>
                     </EInvoiceType>
+                    <GeneralOrSpecialVAT>
+                        <LabelName>普通发票</LabelName>
+                    </GeneralOrSpecialVAT>
                 </InherentLabel>
             </Header>
             <EInvoiceData>
@@ -143,7 +147,7 @@ mod tests {
         let inv = extract_from_xml(xml).unwrap();
         assert_eq!(inv.number, "12345678901234567890");
         assert_eq!(inv.date, "2026-04-15");
-        assert_eq!(inv.inv_type, "电子发票普通发票");
+        assert_eq!(inv.inv_type, "电子发票（普通发票）");
         assert_eq!(inv.item_name, "技术咨询");
         assert_eq!(inv.category, "服务");
         assert_eq!(inv.amount, 1000.0);
@@ -154,5 +158,37 @@ mod tests {
         assert_eq!(inv.seller_tax_id, "91110000MA01");
         assert_eq!(inv.buyer_name, "购买方公司");
         assert_eq!(inv.buyer_tax_id, "91310000MB01");
+    }
+
+    #[test]
+    fn test_extract_from_xml_date_with_time() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <EInvoice>
+            <TaxSupervisionInfo>
+                <InvoiceNumber>12345678901234567890</InvoiceNumber>
+                <IssueTime>2026-03-26 19:36:59</IssueTime>
+            </TaxSupervisionInfo>
+        </EInvoice>"#;
+        let inv = extract_from_xml(xml).unwrap();
+        assert_eq!(inv.date, "2026-03-26");
+    }
+
+    #[test]
+    fn test_extract_from_xml_single_label_type() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <EInvoice>
+            <TaxSupervisionInfo>
+                <InvoiceNumber>11111222223333344444</InvoiceNumber>
+            </TaxSupervisionInfo>
+            <Header>
+                <InherentLabel>
+                    <EInvoiceType>
+                        <LabelName>普通发票</LabelName>
+                    </EInvoiceType>
+                </InherentLabel>
+            </Header>
+        </EInvoice>"#;
+        let inv = extract_from_xml(xml).unwrap();
+        assert_eq!(inv.inv_type, "电子发票普通发票");
     }
 }
