@@ -5,8 +5,10 @@ pub fn extract_from_pdf(data: &[u8]) -> Result<models::Invoice, Box<dyn std::err
     let mut inv = models::Invoice::default();
 
     if let Ok(pdf) = lopdf::Document::load_mem(data) {
-        extract_metadata(&pdf, &mut inv);
-        let _ = extract_text(&pdf, &mut inv);
+        let has_text = extract_text(&pdf, &mut inv).unwrap_or(false);
+        if !has_text {
+            extract_metadata(&pdf, &mut inv);
+        }
     }
 
     Ok(inv)
@@ -96,7 +98,7 @@ fn extract_metadata(pdf: &lopdf::Document, inv: &mut models::Invoice) {
 fn extract_text(
     pdf: &lopdf::Document,
     inv: &mut models::Invoice,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<bool, Box<dyn std::error::Error>> {
     let pages = pdf.get_pages();
     let page_nums: Vec<u32> = pages.keys().copied().collect();
 
@@ -111,14 +113,14 @@ fn extract_text(
                 }
             }
             if raw.trim().is_empty() || is_cid_font_content(&raw) {
-                return Ok(());
+                return Ok(false);
             }
             raw
         }
     };
 
     if text.trim().is_empty() {
-        return Ok(());
+        return Ok(false);
     }
 
     let normalized = Regex::new(r"\s+")?.replace_all(&text, " ").to_string();
@@ -249,7 +251,7 @@ fn extract_text(
         }
     }
 
-    Ok(())
+    Ok(!normalized.trim().is_empty())
 }
 
 fn is_cid_font_content(text: &str) -> bool {
