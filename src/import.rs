@@ -13,6 +13,11 @@ pub fn extract_invoice(path: &str) -> Result<models::Invoice, Box<dyn std::error
         .unwrap_or("")
         .to_lowercase();
 
+    // Data source priority for PDF invoices:
+    //   1. Text extraction (primary) — parsed from visible PDF text
+    //   2. PDF metadata (fallback) — used only when no text is found (image/scanned PDFs)
+    //   3. XML/OFD supplement (last resort) — fills fields still empty after 1 & 2
+
     let mut inv = match ext.as_str() {
         "pdf" => extract_from_pdf(path)?,
         "xml" => extract_from_xml(path)?,
