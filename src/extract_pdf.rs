@@ -239,10 +239,12 @@ fn extract_text(
 
         if inv.total == 0.0 {
             let re_after = Regex::new(r"¥\s*(\d+\.?\d*)")?;
-            if let Some(caps) = re_after.captures(&normalized) {
-                if let Ok(val) = caps.get(1).unwrap().as_str().parse::<f64>() {
-                    inv.total = val;
-                }
+            let totals: Vec<f64> = re_after
+                .captures_iter(&normalized)
+                .filter_map(|c| c.get(1)?.as_str().parse().ok())
+                .collect();
+            if let Some(&val) = totals.last() {
+                inv.total = val;
             }
         }
     }
