@@ -99,16 +99,27 @@ fn extract_text(
     pdf: &lopdf::Document,
     inv: &mut models::Invoice,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut text = String::new();
     let pages = pdf.get_pages();
-    for (_, obj_id) in pages {
-        if let Ok(page_text) = extract_page_text(pdf, obj_id) {
-            text.push_str(&page_text);
-            text.push(' ');
-        }
-    }
+    let page_nums: Vec<u32> = pages.keys().copied().collect();
 
-    if text.trim().is_empty() || is_cid_font_content(&text) {
+    let text = match lopdf::Document::extract_text(pdf, &page_nums) {
+        Ok(t) if !t.trim().is_empty() => t,
+        _ => {
+            let mut raw = String::new();
+            for (_, obj_id) in pages {
+                if let Ok(page_text) = extract_page_text(pdf, obj_id) {
+                    raw.push_str(&page_text);
+                    raw.push(' ');
+                }
+            }
+            if raw.trim().is_empty() || is_cid_font_content(&raw) {
+                return Ok(());
+            }
+            raw
+        }
+    };
+
+    if text.trim().is_empty() {
         return Ok(());
     }
 
