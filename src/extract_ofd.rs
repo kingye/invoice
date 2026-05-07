@@ -67,9 +67,19 @@ fn extract_custom_data_from_ofd_xml(xml_content: &str, inv: &mut models::Invoice
             .filter(|n| n.has_tag_name("CustomData") || n.tag_name().name() == "CustomData")
         {
             let name = node.attribute("Name").unwrap_or("");
-            let value = node.text().unwrap_or("");
+            let value = node.text().unwrap_or("").trim().to_string();
+            let value = if value.is_empty() {
+                node.descendants()
+                    .filter_map(|n| n.text())
+                    .collect::<Vec<_>>()
+                    .join("")
+                    .trim()
+                    .to_string()
+            } else {
+                value
+            };
             if !name.is_empty() && !value.is_empty() {
-                custom_data.insert(name.to_string(), value.to_string());
+                custom_data.insert(name.to_string(), value);
             }
         }
 
