@@ -407,4 +407,92 @@ mod tests {
         let normal_text = "BT (Hello World) Tj ET";
         assert!(!is_cid_font_content(normal_text));
     }
+
+    fn create_pdf_with_metadata() -> Vec<u8> {
+        let mut doc = lopdf::Document::new();
+        let info_dict = lopdf::Dictionary::from_iter([
+            (
+                b"InvoiceNumber".to_vec(),
+                lopdf::Object::string_literal("META_NUMBER"),
+            ),
+            (
+                b"IssueTime".to_vec(),
+                lopdf::Object::string_literal("2025年12月01日"),
+            ),
+            (
+                b"TotalAmWithoutTax".to_vec(),
+                lopdf::Object::string_literal("200.00"),
+            ),
+            (
+                b"TotalTaxAm".to_vec(),
+                lopdf::Object::string_literal("12.00"),
+            ),
+            (
+                b"TotalTax-includedAmount".to_vec(),
+                lopdf::Object::string_literal("212.00"),
+            ),
+            (
+                b"SellerIdNum".to_vec(),
+                lopdf::Object::string_literal("999999999999999"),
+            ),
+        ]);
+        let info_id = doc.add_object(lopdf::Object::Dictionary(info_dict));
+        let catalog = lopdf::Dictionary::from_iter([(
+            b"Type".to_vec(),
+            lopdf::Object::Name(b"Catalog".to_vec()),
+        )]);
+        let catalog_id = doc.add_object(lopdf::Object::Dictionary(catalog));
+        doc.trailer.set(b"Info", lopdf::Object::Reference(info_id));
+        doc.trailer
+            .set(b"Root", lopdf::Object::Reference(catalog_id));
+        let mut buf = Vec::new();
+        doc.save_to(&mut buf).unwrap();
+        buf
+    }
+
+    #[test]
+    fn test_metadata_does_not_overwrite_prefilled_fields() {
+        let data = create_pdf_with_metadata();
+        let pdf = lopdf::Document::load_mem(&data).unwrap();
+        let mut inv = models::Invoice {
+            number: "TEXT_NUMBER".to_string(),
+            date: "2026-01-01".to_string(),
+            amount: 100.0,
+            tax: 6.0,
+            total: 106.0,
+            seller_tax_id: "91110000MA01".to_string(),
+            ..Default::default()
+        };
+        extract_metadata(&pdf, &mut inv);
+        assert_eq!(inv.number, "TEXT_NUMBER");
+        assert_eq!(inv.date, "2026-01-01");
+        assert_eq!(inv.amount, 100.0);
+        assert_eq!(inv.tax, 6.0);
+        assert_eq!(inv.total, 106.0);
+        assert_eq!(inv.seller_tax_id, "91110000MA01");
+    }
+
+    #[test]
+    fn test_metadata_fills_empty_fields() {
+        let data = create_pdf_with_metadata();
+        let pdf = lopdf::Document::load_mem(&data).unwrap();
+        let mut inv = models::Invoice::default();
+        extract_metadata(&pdf, &mut inv);
+        assert_eq!(inv.number, "META_NUMBER");
+        assert_eq!(inv.date, "2025-12-01");
+        assert_eq!(inv.amount, 200.0);
+        assert_eq!(inv.tax, 12.0);
+        assert_eq!(inv.total, 212.0);
+        assert_eq!(inv.seller_tax_id, "999999999999999");
+    }
+
+    #[test]
+    fn test_text_first_extracts_from_pdf_with_metadata() {
+        let data = create_pdf_with_metadata();
+        let result = extract_from_pdf(&data);
+        assert!(result.is_ok());
+        let inv = result.unwrap();
+        assert_eq!(inv.number, "META_NUMBER");
+        assert_eq!(inv.date, "2025-12-01");
+    }
 }
