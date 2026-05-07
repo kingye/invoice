@@ -62,7 +62,10 @@ fn extract_custom_data_from_ofd_xml(xml_content: &str, inv: &mut models::Invoice
         let mut custom_data: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
 
-        for node in doc.descendants().filter(|n| n.has_tag_name("CustomData")) {
+        for node in doc
+            .descendants()
+            .filter(|n| n.has_tag_name("CustomData") || n.tag_name().name() == "CustomData")
+        {
             let name = node.attribute("Name").unwrap_or("");
             let value = node.text().unwrap_or("");
             if !name.is_empty() && !value.is_empty() {
@@ -77,13 +80,13 @@ fn extract_custom_data_from_ofd_xml(xml_content: &str, inv: &mut models::Invoice
             inv.date = v.replace("年", "-").replace("月", "-").replace("日", "");
         }
         if let Some(v) = custom_data.get("合计金额") {
-            inv.amount = v.parse().unwrap_or(0.0);
+            inv.amount = v.trim().parse().unwrap_or(0.0);
         }
         if let Some(v) = custom_data.get("合计税额") {
-            inv.tax = v.parse().unwrap_or(0.0);
+            inv.tax = v.trim().parse().unwrap_or(0.0);
         }
         if let Some(v) = custom_data.get("价税合计") {
-            inv.total = v.parse().unwrap_or(0.0);
+            inv.total = v.trim().parse().unwrap_or(0.0);
         }
         if let Some(v) = custom_data.get("销售方纳税人识别号") {
             inv.seller_tax_id = v.clone();
