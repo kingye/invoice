@@ -6,9 +6,7 @@ pub fn extract_from_pdf(data: &[u8]) -> Result<models::Invoice, Box<dyn std::err
 
     if let Ok(pdf) = lopdf::Document::load_mem(data) {
         extract_metadata(&pdf, &mut inv);
-        if inv.number.is_empty() {
-            let _ = extract_text(&pdf, &mut inv);
-        }
+        let _ = extract_text(&pdf, &mut inv);
     }
 
     Ok(inv)
@@ -123,39 +121,91 @@ fn extract_text(
         return Ok(());
     }
 
-    let re_number = Regex::new(r"\d{20}")?;
-    if let Some(m) = re_number.find(&text) {
-        inv.number = m.as_str().to_string();
-    }
+    let normalized = Regex::new(r"\s+")?.replace_all(&text, " ").to_string();
 
-    let re_date = Regex::new(r"\d{4}年\d{2}月\d{2}日")?;
-    if let Some(m) = re_date.find(&text) {
-        let d = m
-            .as_str()
-            .replace("年", "-")
-            .replace("月", "-")
-            .replace("日", "");
-        inv.date = d;
-    }
-
-    let re_seller = Regex::new(r"销\s*名称：\s*(.+)")?;
-    if let Some(caps) = re_seller.captures(&text) {
-        if let Some(m) = caps.get(1) {
-            inv.seller_name = m.as_str().trim().to_string();
+    if inv.number.is_empty() {
+        let re = Regex::new(r"\d{20}")?;
+        if let Some(m) = re.find(&normalized) {
+            inv.number = m.as_str().to_string();
         }
     }
 
-    let re_buyer = Regex::new(r"购\s*名称：\s*(.+)")?;
-    if let Some(caps) = re_buyer.captures(&text) {
-        if let Some(m) = caps.get(1) {
-            inv.buyer_name = m.as_str().trim().to_string();
+    if inv.date.is_empty() {
+        let re = Regex::new(r"\d{4}年\d{2}月\d{2}日")?;
+        if let Some(m) = re.find(&normalized) {
+            inv.date = m
+                .as_str()
+                .replace("年", "-")
+                .replace("月", "-")
+                .replace("日", "");
         }
     }
 
-    let re_item = Regex::new(r"\*[^*]+\*(.+)")?;
-    if let Some(caps) = re_item.captures(&text) {
-        if let Some(m) = caps.get(1) {
-            inv.item_name = m.as_str().trim().to_string();
+    if inv.inv_type.is_empty() {
+        let re = Regex::new(r"电子发票[（(]([^）)]+)[)）]")?;
+        if let Some(caps) = re.captures(&normalized) {
+            inv.inv_type = format!("电子发票（{}）", caps.get(1).unwrap().as_str());
+        } else {
+            let re2 = Regex::new(r"电\s*子\s*发\s*票\s*[（(]\s*普\s*通\s*发\s*票\s*[)）]")?;
+            if let Some(m) = re2.find(&normalized) {
+                inv.inv_type = m.as_str().replace(" ", "");
+            }
+        }
+    }
+
+    if inv.seller_name.is_empty() {
+        let re = Regex::new(r"销\s*售\s*方.*?名称[：:]\s*(\S+)")?;
+        if let Some(caps) = re.captures(&normalized) {
+            inv.seller_name = caps.get(1).unwrap().as_str().to_string();
+        } else {
+            let re2 = Regex::new(r"销\s*名称[：:]\s*(\S+)")?;
+            if let Some(caps) = re2.captures(&normalized) {
+                inv.seller_name = caps.get(1).unwrap().as_str().to_string();
+            }
+        }
+    }
+
+    if inv.buyer_name.is_empty() {
+        let re = Regex::new(r"购\s*买\s*方.*?名称[：:]\s*(\S+)")?;
+        if let Some(caps) = re.captures(&normalized) {
+            inv.buyer_name = caps.get(1).unwrap().as_str().to_string();
+        } else {
+            let re2 = Regex::new(r"购\s*名称[：:]\s*(\S+)")?;
+            if let Some(caps) = re2.captures(&normalized) {
+                inv.buyer_name = caps.get(1).unwrap().as_str().to_string();
+            }
+        }
+    }
+
+    if inv.item_name.is_empty() {
+        let re = Regex::new(r"\*[^*]+\*([^*\s]+)")?;
+        if let Some(caps) = re.captures(&normalized) {
+            inv.item_name = caps.get(1).unwrap().as_str().to_string();
+        }
+    }
+
+    if inv.tax_rate == 0.0 {
+        let re = Regex::new(r"(\d+)%")?;
+        for cap in re.captures_iter(&normalized) {
+            if let Some(m) = cap.get(1) {
+                let pct: f64 = m.as_str().parse().unwrap_or(0.0);
+                if pct > 0.0 && pct <= 100.0 {
+                    inv.tax_rate = pct / 100.0;
+                    break;
+                }
+            }
+        }
+    }
+
+    if inv.amount == 0.0 {
+        let re = Regex::new(r"¥\s*(\d+\.?\d*)")?;
+        let amounts: Vec<f64> = re
+            .captures_iter(&normalized)
+            .filter_map(|c| c.get(1)?.as_str().parse().ok())
+            .collect();
+        if amounts.len() >= 2 {
+            inv.amount = amounts[0];
+            inv.total = *amounts.last().unwrap();
         }
     }
 
@@ -258,18 +308,34 @@ mod tests {
 
     #[test]
     fn test_extract_text_regex_seller() {
-        let re = Regex::new(r"销\s*名称：\s*(.+)").unwrap();
-        let text = "销名称：测试公司A";
+        let re = Regex::new(r"销\s*售\s*方.*?名称[：:]\s*(\S+)").unwrap();
+        let text = "销售方 信息 名称：上海壹佰米网络科技有限公司";
         let caps = re.captures(text).unwrap();
-        assert_eq!(caps.get(1).unwrap().as_str().trim(), "测试公司A");
+        assert_eq!(caps.get(1).unwrap().as_str(), "上海壹佰米网络科技有限公司");
+    }
+
+    #[test]
+    fn test_extract_text_regex_buyer() {
+        let re = Regex::new(r"购\s*买\s*方.*?名称[：:]\s*(\S+)").unwrap();
+        let text = "购买方 信息 名称：张三";
+        let caps = re.captures(text).unwrap();
+        assert_eq!(caps.get(1).unwrap().as_str(), "张三");
     }
 
     #[test]
     fn test_extract_text_regex_item() {
-        let re = Regex::new(r"\*[^*]+\*(.+)").unwrap();
+        let re = Regex::new(r"\*[^*]+\*([^*\s]+)").unwrap();
         let text = "项目 *服务*技术咨询费";
         let caps = re.captures(text).unwrap();
-        assert_eq!(caps.get(1).unwrap().as_str().trim(), "技术咨询费");
+        assert_eq!(caps.get(1).unwrap().as_str(), "技术咨询费");
+    }
+
+    #[test]
+    fn test_extract_text_regex_type() {
+        let re = Regex::new(r"电子发票[（(]([^）)]+)[)）]").unwrap();
+        let text = "电子发票（普通发票） 金额";
+        let caps = re.captures(text).unwrap();
+        assert_eq!(caps.get(1).unwrap().as_str(), "普通发票");
     }
 
     #[test]
