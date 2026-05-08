@@ -91,6 +91,27 @@ fn parse_invoice_text(text: &str, inv: &mut models::Invoice) {
                 }
             }
         }
+
+        if inv.seller_tax_id.is_empty() || inv.buyer_tax_id.is_empty() {
+            let re_tax_table_rev = Regex::new(
+                r"统一社会信用代码\s*/\s*纳税人识别号[：:]\s*(9[A-Z0-9]{15,19})?\s*信\s*(9[A-Z0-9]{15,19})?\s*统一社会信用代码\s*/\s*纳税人识别号[：:]",
+            )
+            .unwrap();
+            if let Some(caps) = re_tax_table_rev.captures(&normalized) {
+                if let Some(m) = caps.get(1) {
+                    let val = m.as_str().trim();
+                    if !val.is_empty() && inv.buyer_tax_id.is_empty() {
+                        inv.buyer_tax_id = val.to_string();
+                    }
+                }
+                if let Some(m) = caps.get(2) {
+                    let val = m.as_str().trim();
+                    if !val.is_empty() && inv.seller_tax_id.is_empty() {
+                        inv.seller_tax_id = val.to_string();
+                    }
+                }
+            }
+        }
     }
 
     if !table_layout_matched && inv.buyer_name.is_empty() {
@@ -179,6 +200,14 @@ fn parse_invoice_text(text: &str, inv: &mut models::Invoice) {
 
     if inv.seller_tax_id.is_empty() {
         let re = Regex::new(r"纳税人识别号[：:]\s*(9[A-Z0-9]{15,19})").unwrap();
+        if let Some(caps) = re.captures(&normalized) {
+            inv.seller_tax_id = caps.get(1).unwrap().as_str().to_string();
+        }
+    }
+
+    if inv.seller_tax_id.is_empty() {
+        let re =
+            Regex::new(r"(9[A-Z0-9]{15,19})\s+统一社会信用代码\s*/\s*纳税人识别号[：:]").unwrap();
         if let Some(caps) = re.captures(&normalized) {
             inv.seller_tax_id = caps.get(1).unwrap().as_str().to_string();
         }
@@ -512,5 +541,36 @@ mod tests {
             re.find("913100006074138050").unwrap().as_str(),
             "913100006074138050"
         );
+    }
+
+    #[test]
+    fn test_table_layout_tax_id_pdf_oxide_reverse() {
+        let text = "购 名称：Cheng Qing（个人） 销 名称：上海望七阁餐饮管理有限公司 买 售 方 方 \
+                    信 统一社会信用代码/纳税人识别号： 信 91310115MA1H73EJ5B 统一社会信用代码/纳税人识别号： 息 息";
+        let mut inv = models::Invoice::default();
+        parse_invoice_text(text, &mut inv);
+        assert_eq!(inv.seller_name, "上海望七阁餐饮管理有限公司");
+        assert_eq!(inv.seller_tax_id, "91310115MA1H73EJ5B");
+        assert!(inv.buyer_tax_id.is_empty());
+    }
+
+    #[test]
+    fn test_table_layout_tax_id_pdf_oxide_both_tax() {
+        let text = "购 名称：儒德管理咨询(上海)有限公司 销 名称：上海想点就点餐饮有限公司 买 售 方 方 \
+                    信 统一社会信用代码/纳税人识别号：913101156711533820 信 91310110MA7H3WGJ6C 统一社会信用代码/纳税人识别号： 息 息";
+        let mut inv = models::Invoice::default();
+        parse_invoice_text(text, &mut inv);
+        assert_eq!(inv.buyer_name, "儒德管理咨询(上海)有限公司");
+        assert_eq!(inv.seller_name, "上海想点就点餐饮有限公司");
+        assert_eq!(inv.buyer_tax_id, "913101156711533820");
+        assert_eq!(inv.seller_tax_id, "91310110MA7H3WGJ6C");
+    }
+
+    #[test]
+    fn test_reverse_tax_id_before_label() {
+        let text = "91310115MA1H73EJ5B 统一社会信用代码/纳税人识别号：";
+        let mut inv = models::Invoice::default();
+        parse_invoice_text(text, &mut inv);
+        assert_eq!(inv.seller_tax_id, "91310115MA1H73EJ5B");
     }
 }
