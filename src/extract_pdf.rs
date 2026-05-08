@@ -74,6 +74,20 @@ fn parse_invoice_text(text: &str, inv: &mut models::Invoice) {
         }
     }
 
+    if inv.seller_tax_id.is_empty() {
+        let re = Regex::new(r"销\s*售\s*方.*?纳税人识别号[：:]\s*(9\d{14,17})").unwrap();
+        if let Some(caps) = re.captures(&normalized) {
+            inv.seller_tax_id = caps.get(1).unwrap().as_str().to_string();
+        }
+    }
+
+    if inv.buyer_tax_id.is_empty() {
+        let re = Regex::new(r"购\s*买\s*方.*?纳税人识别号[：:]\s*(9\d{14,17})").unwrap();
+        if let Some(caps) = re.captures(&normalized) {
+            inv.buyer_tax_id = caps.get(1).unwrap().as_str().to_string();
+        }
+    }
+
     if inv.seller_name.is_empty() || inv.buyer_name.is_empty() {
         let re_names = Regex::new(
             r"(\d{4}年\d{2}月\d{2}日)\s+([^\d]+?)\s+([\x{4e00}-\x{9fff}][\x{4e00}-\x{9fff}\w()（） ]+?)\s+(9\d{14,17})",
