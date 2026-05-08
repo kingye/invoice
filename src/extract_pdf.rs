@@ -5,8 +5,10 @@ pub fn extract_from_pdf(data: &[u8]) -> Result<models::Invoice, Box<dyn std::err
     let mut inv = models::Invoice::default();
 
     if let Ok(pdf) = lopdf::Document::load_mem(data) {
-        extract_metadata(&pdf, &mut inv);
-        let _ = extract_text(&pdf, &mut inv);
+        let has_text = extract_text(&pdf, &mut inv).unwrap_or(false);
+        if !has_text {
+            extract_metadata(&pdf, &mut inv);
+        }
     }
 
     Ok(inv)
@@ -48,47 +50,59 @@ fn decode_pdf_string(obj: &lopdf::Object) -> Option<String> {
 
 fn extract_metadata(pdf: &lopdf::Document, inv: &mut models::Invoice) {
     if let Some(info_dict) = get_info_dict(pdf) {
-        if let Some(val) = info_dict
-            .get(b"InvoiceNumber")
-            .ok()
-            .and_then(|o| decode_pdf_string(o))
-        {
-            inv.number = val;
+        if inv.number.is_empty() {
+            if let Some(val) = info_dict
+                .get(b"InvoiceNumber")
+                .ok()
+                .and_then(|o| decode_pdf_string(o))
+            {
+                inv.number = val;
+            }
         }
-        if let Some(val) = info_dict
-            .get(b"IssueTime")
-            .ok()
-            .and_then(|o| decode_pdf_string(o))
-        {
-            inv.date = val.replace("年", "-").replace("月", "-").replace("日", "");
+        if inv.date.is_empty() {
+            if let Some(val) = info_dict
+                .get(b"IssueTime")
+                .ok()
+                .and_then(|o| decode_pdf_string(o))
+            {
+                inv.date = val.replace("年", "-").replace("月", "-").replace("日", "");
+            }
         }
-        if let Some(val) = info_dict
-            .get(b"TotalAmWithoutTax")
-            .ok()
-            .and_then(|o| decode_pdf_string(o))
-        {
-            inv.amount = val.parse().unwrap_or(0.0);
+        if inv.amount == 0.0 {
+            if let Some(val) = info_dict
+                .get(b"TotalAmWithoutTax")
+                .ok()
+                .and_then(|o| decode_pdf_string(o))
+            {
+                inv.amount = val.parse().unwrap_or(0.0);
+            }
         }
-        if let Some(val) = info_dict
-            .get(b"TotalTaxAm")
-            .ok()
-            .and_then(|o| decode_pdf_string(o))
-        {
-            inv.tax = val.parse().unwrap_or(0.0);
+        if inv.tax == 0.0 {
+            if let Some(val) = info_dict
+                .get(b"TotalTaxAm")
+                .ok()
+                .and_then(|o| decode_pdf_string(o))
+            {
+                inv.tax = val.parse().unwrap_or(0.0);
+            }
         }
-        if let Some(val) = info_dict
-            .get(b"TotalTax-includedAmount")
-            .ok()
-            .and_then(|o| decode_pdf_string(o))
-        {
-            inv.total = val.parse().unwrap_or(0.0);
+        if inv.total == 0.0 {
+            if let Some(val) = info_dict
+                .get(b"TotalTax-includedAmount")
+                .ok()
+                .and_then(|o| decode_pdf_string(o))
+            {
+                inv.total = val.parse().unwrap_or(0.0);
+            }
         }
-        if let Some(val) = info_dict
-            .get(b"SellerIdNum")
-            .ok()
-            .and_then(|o| decode_pdf_string(o))
-        {
-            inv.seller_tax_id = val;
+        if inv.seller_tax_id.is_empty() {
+            if let Some(val) = info_dict
+                .get(b"SellerIdNum")
+                .ok()
+                .and_then(|o| decode_pdf_string(o))
+            {
+                inv.seller_tax_id = val;
+            }
         }
     }
 }
@@ -96,7 +110,7 @@ fn extract_metadata(pdf: &lopdf::Document, inv: &mut models::Invoice) {
 fn extract_text(
     pdf: &lopdf::Document,
     inv: &mut models::Invoice,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<bool, Box<dyn std::error::Error>> {
     let pages = pdf.get_pages();
     let page_nums: Vec<u32> = pages.keys().copied().collect();
 
@@ -111,14 +125,14 @@ fn extract_text(
                 }
             }
             if raw.trim().is_empty() || is_cid_font_content(&raw) {
-                return Ok(());
+                return Ok(false);
             }
             raw
         }
     };
 
     if text.trim().is_empty() {
-        return Ok(());
+        return Ok(false);
     }
 
     let normalized = Regex::new(r"\s+")?.replace_all(&text, " ").to_string();
@@ -249,7 +263,7 @@ fn extract_text(
         }
     }
 
-    Ok(())
+    Ok(!normalized.trim().is_empty())
 }
 
 fn is_cid_font_content(text: &str) -> bool {
@@ -392,5 +406,93 @@ mod tests {
         assert!(is_cid_font_content(cid_text));
         let normal_text = "BT (Hello World) Tj ET";
         assert!(!is_cid_font_content(normal_text));
+    }
+
+    fn create_pdf_with_metadata() -> Vec<u8> {
+        let mut doc = lopdf::Document::new();
+        let info_dict = lopdf::Dictionary::from_iter([
+            (
+                b"InvoiceNumber".to_vec(),
+                lopdf::Object::string_literal("META_NUMBER"),
+            ),
+            (
+                b"IssueTime".to_vec(),
+                lopdf::Object::string_literal("2025年12月01日"),
+            ),
+            (
+                b"TotalAmWithoutTax".to_vec(),
+                lopdf::Object::string_literal("200.00"),
+            ),
+            (
+                b"TotalTaxAm".to_vec(),
+                lopdf::Object::string_literal("12.00"),
+            ),
+            (
+                b"TotalTax-includedAmount".to_vec(),
+                lopdf::Object::string_literal("212.00"),
+            ),
+            (
+                b"SellerIdNum".to_vec(),
+                lopdf::Object::string_literal("999999999999999"),
+            ),
+        ]);
+        let info_id = doc.add_object(lopdf::Object::Dictionary(info_dict));
+        let catalog = lopdf::Dictionary::from_iter([(
+            b"Type".to_vec(),
+            lopdf::Object::Name(b"Catalog".to_vec()),
+        )]);
+        let catalog_id = doc.add_object(lopdf::Object::Dictionary(catalog));
+        doc.trailer.set(b"Info", lopdf::Object::Reference(info_id));
+        doc.trailer
+            .set(b"Root", lopdf::Object::Reference(catalog_id));
+        let mut buf = Vec::new();
+        doc.save_to(&mut buf).unwrap();
+        buf
+    }
+
+    #[test]
+    fn test_metadata_does_not_overwrite_prefilled_fields() {
+        let data = create_pdf_with_metadata();
+        let pdf = lopdf::Document::load_mem(&data).unwrap();
+        let mut inv = models::Invoice {
+            number: "TEXT_NUMBER".to_string(),
+            date: "2026-01-01".to_string(),
+            amount: 100.0,
+            tax: 6.0,
+            total: 106.0,
+            seller_tax_id: "91110000MA01".to_string(),
+            ..Default::default()
+        };
+        extract_metadata(&pdf, &mut inv);
+        assert_eq!(inv.number, "TEXT_NUMBER");
+        assert_eq!(inv.date, "2026-01-01");
+        assert_eq!(inv.amount, 100.0);
+        assert_eq!(inv.tax, 6.0);
+        assert_eq!(inv.total, 106.0);
+        assert_eq!(inv.seller_tax_id, "91110000MA01");
+    }
+
+    #[test]
+    fn test_metadata_fills_empty_fields() {
+        let data = create_pdf_with_metadata();
+        let pdf = lopdf::Document::load_mem(&data).unwrap();
+        let mut inv = models::Invoice::default();
+        extract_metadata(&pdf, &mut inv);
+        assert_eq!(inv.number, "META_NUMBER");
+        assert_eq!(inv.date, "2025-12-01");
+        assert_eq!(inv.amount, 200.0);
+        assert_eq!(inv.tax, 12.0);
+        assert_eq!(inv.total, 212.0);
+        assert_eq!(inv.seller_tax_id, "999999999999999");
+    }
+
+    #[test]
+    fn test_text_first_extracts_from_pdf_with_metadata() {
+        let data = create_pdf_with_metadata();
+        let result = extract_from_pdf(&data);
+        assert!(result.is_ok());
+        let inv = result.unwrap();
+        assert_eq!(inv.number, "META_NUMBER");
+        assert_eq!(inv.date, "2025-12-01");
     }
 }
