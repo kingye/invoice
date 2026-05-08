@@ -104,6 +104,15 @@ fn extract_custom_data_from_ofd_xml(xml_content: &str, inv: &mut models::Invoice
         if let Some(v) = custom_data.get("销售方纳税人识别号") {
             inv.seller_tax_id = v.clone();
         }
+        if let Some(v) = custom_data.get("销售方名称") {
+            inv.seller_name = v.clone();
+        }
+        if let Some(v) = custom_data.get("购买方名称") {
+            inv.buyer_name = v.clone();
+        }
+        if let Some(v) = custom_data.get("购买方纳税人识别号") {
+            inv.buyer_tax_id = v.clone();
+        }
     }
 }
 
