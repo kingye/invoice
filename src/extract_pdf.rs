@@ -50,6 +50,30 @@ fn parse_invoice_text(text: &str, inv: &mut models::Invoice) {
         }
     }
 
+    if inv.buyer_name.is_empty() {
+        let re =
+            Regex::new(r"购\s*买\s*方.*?名\s*称[：:]\s*([^\s购销]+(?:\s+[^\s购销]+)*)").unwrap();
+        if let Some(caps) = re.captures(&normalized) {
+            let val = caps.get(1).unwrap().as_str().trim();
+            if !val.is_empty() {
+                inv.buyer_name = val.to_string();
+            }
+        }
+    }
+
+    if inv.seller_name.is_empty() {
+        let re = Regex::new(
+            r"销\s*售\s*方.*?名\s*称[：:]\s*([\x{4e00}-\x{9fff}][\x{4e00}-\x{9fff}\w()（）]+)",
+        )
+        .unwrap();
+        if let Some(caps) = re.captures(&normalized) {
+            let val = caps.get(1).unwrap().as_str().trim();
+            if !val.is_empty() {
+                inv.seller_name = val.to_string();
+            }
+        }
+    }
+
     if inv.seller_name.is_empty() || inv.buyer_name.is_empty() {
         let re_names = Regex::new(
             r"(\d{4}年\d{2}月\d{2}日)\s+([^\d]+?)\s+([\x{4e00}-\x{9fff}][\x{4e00}-\x{9fff}\w()（） ]+?)\s+(9\d{14,17})",
@@ -78,30 +102,6 @@ fn parse_invoice_text(text: &str, inv: &mut models::Invoice) {
             }
             if inv.seller_name.is_empty() {
                 inv.seller_name = caps.get(3).unwrap().as_str().to_string();
-            }
-        }
-    }
-
-    if inv.buyer_name.is_empty() {
-        let re =
-            Regex::new(r"购\s*买\s*方.*?名\s*称[：:]\s*([^\s购销]+(?:\s+[^\s购销]+)*)").unwrap();
-        if let Some(caps) = re.captures(&normalized) {
-            let val = caps.get(1).unwrap().as_str().trim();
-            if !val.is_empty() {
-                inv.buyer_name = val.to_string();
-            }
-        }
-    }
-
-    if inv.seller_name.is_empty() {
-        let re = Regex::new(
-            r"销\s*售\s*方.*?名\s*称[：:]\s*([\x{4e00}-\x{9fff}][\x{4e00}-\x{9fff}\w()（）]+)",
-        )
-        .unwrap();
-        if let Some(caps) = re.captures(&normalized) {
-            let val = caps.get(1).unwrap().as_str().trim();
-            if !val.is_empty() {
-                inv.seller_name = val.to_string();
             }
         }
     }
