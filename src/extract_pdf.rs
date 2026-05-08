@@ -127,6 +127,13 @@ fn parse_invoice_text(text: &str, inv: &mut models::Invoice) {
         }
     }
 
+    if inv.seller_tax_id.is_empty() {
+        let re = Regex::new(r"纳税人识别号[：:]\s*(9\d{14,17})").unwrap();
+        if let Some(caps) = re.captures(&normalized) {
+            inv.seller_tax_id = caps.get(1).unwrap().as_str().to_string();
+        }
+    }
+
     if inv.item_name.is_empty() {
         let re = Regex::new(r"\*[^*]+\*([^*\s]+)").unwrap();
         if let Some(caps) = re.captures(&normalized) {
