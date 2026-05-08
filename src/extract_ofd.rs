@@ -104,6 +104,15 @@ fn extract_custom_data_from_ofd_xml(xml_content: &str, inv: &mut models::Invoice
         if let Some(v) = custom_data.get("销售方纳税人识别号") {
             inv.seller_tax_id = v.clone();
         }
+        if let Some(v) = custom_data.get("销售方名称") {
+            inv.seller_name = v.clone();
+        }
+        if let Some(v) = custom_data.get("购买方名称") {
+            inv.buyer_name = v.clone();
+        }
+        if let Some(v) = custom_data.get("购买方纳税人识别号") {
+            inv.buyer_tax_id = v.clone();
+        }
     }
 }
 
@@ -184,6 +193,9 @@ mod tests {
             <ofd:CustomData Name="合计税额">1.60</ofd:CustomData>
             <ofd:CustomData Name="价税合计">162.00</ofd:CustomData>
             <ofd:CustomData Name="销售方纳税人识别号">913101150934986600</ofd:CustomData>
+            <ofd:CustomData Name="销售方名称">测试销售方公司</ofd:CustomData>
+            <ofd:CustomData Name="购买方名称">测试购买方公司</ofd:CustomData>
+            <ofd:CustomData Name="购买方纳税人识别号">91310000MA01ABCDE</ofd:CustomData>
         </ofd:DocInfo>
     </ofd:DocBody>
 </ofd:OFD>"#;
@@ -195,6 +207,9 @@ mod tests {
         assert_eq!(inv.tax, 1.60);
         assert_eq!(inv.total, 162.0);
         assert_eq!(inv.seller_tax_id, "913101150934986600");
+        assert_eq!(inv.seller_name, "测试销售方公司");
+        assert_eq!(inv.buyer_name, "测试购买方公司");
+        assert_eq!(inv.buyer_tax_id, "91310000MA01ABCDE");
     }
 
     #[test]
