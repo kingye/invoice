@@ -357,4 +357,57 @@ mod tests {
         assert!((inv.tax - 6.0).abs() < 0.01);
         assert!((inv.total - 106.0).abs() < 0.01);
     }
+
+    #[test]
+    fn test_label_based_seller_name_with_label_prefix() {
+        let text = "电子发票（普通发票） 发票号码 24112000000015301234 开票日期 2026年04月07日 \
+                    购买方 名称：Cheng Qing 销售方 名称：上海壹佰米网络科技有限公司 \
+                    销售方 纳税人识别号：913100006074138050 \
+                    *服务*技术咨询费 6% 合计 ¥100.00 ¥6.00 价税合计 ¥106.00";
+        let mut inv = models::Invoice::default();
+        parse_invoice_text(text, &mut inv);
+        assert_eq!(inv.seller_name, "上海壹佰米网络科技有限公司");
+        assert_ne!(inv.seller_name, "名称");
+        assert_eq!(inv.buyer_name, "Cheng Qing");
+        assert_eq!(inv.seller_tax_id, "913100006074138050");
+    }
+
+    #[test]
+    fn test_label_based_seller_tax_id_variants() {
+        let text1 = "统一社会信用代码/纳税人识别号：913100006074138050";
+        let mut inv1 = models::Invoice::default();
+        parse_invoice_text(text1, &mut inv1);
+        assert_eq!(inv1.seller_tax_id, "913100006074138050");
+
+        let text2 = "纳税人识别号：913100006074138050";
+        let mut inv2 = models::Invoice::default();
+        parse_invoice_text(text2, &mut inv2);
+        assert_eq!(inv2.seller_tax_id, "913100006074138050");
+
+        let text3 = "销售方 纳税人识别号：913100006074138050";
+        let mut inv3 = models::Invoice::default();
+        parse_invoice_text(text3, &mut inv3);
+        assert_eq!(inv3.seller_tax_id, "913100006074138050");
+    }
+
+    #[test]
+    fn test_label_priority_over_generic_regex() {
+        let text = "电子发票（普通发票） 发票号码 24112000000015301234 开票日期 2026年04月07日 \
+                    2026年04月07日 名称 上海测试网络科技有限公司 913100006074138050 \
+                    购买方 名称：Cheng Qing 销售方 名称：上海壹佰米网络科技有限公司 \
+                    *服务*技术咨询费 6% 合计 ¥100.00 ¥6.00 价税合计 ¥106.00";
+        let mut inv = models::Invoice::default();
+        parse_invoice_text(text, &mut inv);
+        assert_eq!(inv.seller_name, "上海壹佰米网络科技有限公司");
+        assert_ne!(inv.seller_name, "名称");
+        assert_eq!(inv.buyer_name, "Cheng Qing");
+    }
+
+    #[test]
+    fn test_tax_id_fallback() {
+        let text = "纳税人识别号：913100006074138050";
+        let re = Regex::new(r"纳税人识别号[：:]\s*(9\d{14,17})").unwrap();
+        let caps = re.captures(text).unwrap();
+        assert_eq!(caps.get(1).unwrap().as_str(), "913100006074138050");
+    }
 }
