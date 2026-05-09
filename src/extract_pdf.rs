@@ -648,4 +648,105 @@ mod tests {
         parse_invoice_text(text, &mut inv);
         assert_eq!(inv.seller_tax_id, "91310115MA1H73EJ5B");
     }
+
+    #[test]
+    fn test_ofd_pdf_layout_detection() {
+        let re = Regex::new(r"购\s+销\s+名称[：:]").unwrap();
+        assert!(re.is_match("购 销 名称：CHENG QING 名称：上海笙诚企业发展有限公司"));
+        assert!(!re.is_match("购 名称：Cheng Qing 销 名称：上海望七阁餐饮管理有限公司"));
+    }
+
+    #[test]
+    fn test_ofd_pdf_seller_name_extraction() {
+        let text = "电子发票（普通发票） 发票号码： 26312000002379573196 开票日期： 2026年04月19日 \
+                    购 销 名称： CHENG QING 名称： 上海笙诚企业发展有限公司 \
+                    买 售 方 方 信 统一社会信用代码/纳税人识别号： 信 91310118MA7MD5K52Q 统一社会信用代码/纳税人识别号： 息 息 \
+                    *餐饮服务*餐饮服务 1% 420.79 4.21 合 计 ¥420.79 ¥4.21 ¥425.00";
+        let mut inv = models::Invoice::default();
+        parse_invoice_text(text, &mut inv);
+        assert_eq!(inv.seller_name, "上海笙诚企业发展有限公司");
+    }
+
+    #[test]
+    fn test_ofd_pdf_buyer_name_extraction() {
+        let text = "电子发票（普通发票） 发票号码： 26312000002379573196 开票日期： 2026年04月19日 \
+                    购 销 名称： CHENG QING 名称： 上海笙诚企业发展有限公司 \
+                    买 售 方 方 信 统一社会信用代码/纳税人识别号： 信 91310118MA7MD5K52Q 统一社会信用代码/纳税人识别号： 息 息";
+        let mut inv = models::Invoice::default();
+        parse_invoice_text(text, &mut inv);
+        assert_eq!(inv.buyer_name, "CHENG QING");
+
+        let text2 = "电子发票（普通发票） 发票号码： 26312000002311043146 开票日期： 2026年04月15日 \
+                     购 销 名称： 程青 名称： 上海兰心荟餐饮管理有限公司 \
+                     买 售 方 方 信 统一社会信用代码/纳税人识别号： 信 91310109MA1G5MRP7F 统一社会信用代码/纳税人识别号： 息 息";
+        let mut inv2 = models::Invoice::default();
+        parse_invoice_text(text2, &mut inv2);
+        assert_eq!(inv2.buyer_name, "程青");
+    }
+
+    #[test]
+    fn test_ofd_pdf_tax_id_extraction() {
+        let text = "购 销 名称： CHENG QING 名称： 上海笙诚企业发展有限公司 \
+                    买 售 方 方 信 统一社会信用代码 /纳税人识别号 ： 信 91310118MA7MD5K52Q 统一社会信用代码 /纳税人识别号 ： 息 息";
+        let mut inv = models::Invoice::default();
+        parse_invoice_text(text, &mut inv);
+        assert_eq!(inv.seller_tax_id, "91310118MA7MD5K52Q");
+        assert!(inv.buyer_tax_id.is_empty());
+    }
+
+    #[test]
+    fn test_label_value_validation() {
+        let label_keywords = [
+            "名称", "项目", "规格", "型号", "单位", "数量", "单价", "金额", "税率", "税额",
+        ];
+        fn is_valid_label_value(val: &str, keywords: &[&str]) -> bool {
+            if val.len() > 50 {
+                return false;
+            }
+            for kw in keywords {
+                if val.contains(kw) {
+                    return false;
+                }
+            }
+            true
+        }
+
+        assert!(!is_valid_label_value(
+            "上海想点就点餐饮有限公司 买 售 方 方 信",
+            &label_keywords
+        ));
+        assert!(!is_valid_label_value(
+            "购 销 名称：儒德管理咨询(上海)有限公司 名称：",
+            &label_keywords
+        ));
+        assert!(is_valid_label_value(
+            "上海望七阁餐饮管理有限公司",
+            &label_keywords
+        ));
+        assert!(is_valid_label_value("Cheng Qing", &label_keywords));
+
+        let long_val = "A".repeat(51);
+        assert!(!is_valid_label_value(&long_val, &label_keywords));
+    }
+
+    #[test]
+    fn test_ofd_pdf_full_pipeline() {
+        let text = "电 子 发 票 （ 普 通 发 票 ） 发 票 号 码 ： 26312000002379573196 \
+                    开 票 日 期 ： 2026年04月19日 \
+                    购 销 名称： CHENG QING 名称： 上海笙诚企业发展有限公司 \
+                    买 售 方 方 信 统一社会信用代码 /纳税人识别号 ： 信 91310118MA7MD5K52Q 统一社会信用代码 /纳税人识别号 ： 息 息 \
+                    项目名称 规格型号 单 位 数 量 单 价 金 额 税率/征收率 税 额 \
+                    *餐饮服务*餐饮服务 1 420.79 420.79 1% 4.21 \
+                    合 计 ¥420.79 ¥4.21 肆佰贰拾伍圆整 ¥425.00 \
+                    价税合计（ 大写） （ 小写） 备 注 开 票 人： 李海燕";
+        let mut inv = models::Invoice::default();
+        parse_invoice_text(text, &mut inv);
+        assert_eq!(inv.number, "26312000002379573196");
+        assert_eq!(inv.date, "2026-04-19");
+        assert_eq!(inv.buyer_name, "CHENG QING");
+        assert_eq!(inv.seller_name, "上海笙诚企业发展有限公司");
+        assert_eq!(inv.seller_tax_id, "91310118MA7MD5K52Q");
+        assert_eq!(inv.item_name, "餐饮服务");
+        assert!((inv.tax_rate - 0.01).abs() < 0.001);
+    }
 }
