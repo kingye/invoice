@@ -162,12 +162,27 @@ fn parse_invoice_text(text: &str, inv: &mut models::Invoice) {
 
     let skip_label_regex = table_layout_matched || ofd_layout_matched;
 
+    let label_keywords = [
+        "名称", "项目", "规格", "型号", "单位", "数量", "单价", "金额", "税率", "税额",
+    ];
+    fn is_valid_label_value(val: &str, keywords: &[&str]) -> bool {
+        if val.len() > 50 {
+            return false;
+        }
+        for kw in keywords {
+            if val.contains(kw) {
+                return false;
+            }
+        }
+        true
+    }
+
     if !skip_label_regex && inv.buyer_name.is_empty() {
         let re =
             Regex::new(r"购\s*买\s*方.*?名\s*称[：:]\s*([^\s购销]+(?:\s+[^\s购销]+)*)").unwrap();
         if let Some(caps) = re.captures(&normalized) {
             let val = caps.get(1).unwrap().as_str().trim();
-            if !val.is_empty() {
+            if !val.is_empty() && is_valid_label_value(val, &label_keywords) {
                 inv.buyer_name = val.to_string();
             }
         }
@@ -180,7 +195,7 @@ fn parse_invoice_text(text: &str, inv: &mut models::Invoice) {
         .unwrap();
         if let Some(caps) = re.captures(&normalized) {
             let val = caps.get(1).unwrap().as_str().trim();
-            if !val.is_empty() {
+            if !val.is_empty() && is_valid_label_value(val, &label_keywords) {
                 inv.seller_name = val.to_string();
             }
         }
