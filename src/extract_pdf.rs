@@ -276,6 +276,18 @@ fn parse_invoice_text(text: &str, inv: &mut models::Invoice) {
         }
     }
 
+    if inv.buyer_tax_id.is_empty() {
+        let re = Regex::new(r"9[A-Z0-9]{15,19}").unwrap();
+        let all_tax_ids: Vec<&str> = re.find_iter(&normalized).map(|m| m.as_str()).collect();
+        if all_tax_ids.len() >= 2 && !inv.seller_tax_id.is_empty() {
+            for tax_id in &all_tax_ids {
+                if *tax_id != inv.seller_tax_id && inv.buyer_tax_id.is_empty() {
+                    inv.buyer_tax_id = tax_id.to_string();
+                }
+            }
+        }
+    }
+
     if inv.item_name.is_empty() {
         let re = Regex::new(r"\*[^*]+\*([^*\s]+)").unwrap();
         if let Some(caps) = re.captures(&normalized) {
