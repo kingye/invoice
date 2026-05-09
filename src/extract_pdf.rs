@@ -51,8 +51,54 @@ fn parse_invoice_text(text: &str, inv: &mut models::Invoice) {
     }
 
     let mut table_layout_matched = false;
+    let mut ofd_layout_matched = false;
 
-    if inv.buyer_name.is_empty() || inv.seller_name.is_empty() {
+    let re_ofd_detect = Regex::new(r"购\s+销\s+名称[：:]").unwrap();
+    if re_ofd_detect.is_match(&normalized) {
+        let re_ofd_names =
+            Regex::new(r"名称[：:]\s*(\S+(?:\s+\S+)*?)\s+名称[：:]\s*([\x{4e00}-\x{9fff}][\x{4e00}-\x{9fff}\w()（）]+)")
+                .unwrap();
+        if let Some(caps) = re_ofd_names.captures(&normalized) {
+            if inv.buyer_name.is_empty() {
+                let val = caps.get(1).unwrap().as_str().trim();
+                if !val.is_empty() {
+                    inv.buyer_name = val.to_string();
+                }
+            }
+            if inv.seller_name.is_empty() {
+                let val = caps.get(2).unwrap().as_str().trim();
+                if !val.is_empty() {
+                    inv.seller_name = val.to_string();
+                }
+            }
+            ofd_layout_matched = true;
+        }
+
+        if ofd_layout_matched {
+            let re_ofd_tax = Regex::new(
+                r"信\s*(9[A-Z0-9]{15,19})?\s*统一社会信用代码\s*/\s*纳税人识别号\s*[：:]",
+            )
+            .unwrap();
+            let tax_ids: Vec<String> = re_ofd_tax
+                .captures_iter(&normalized)
+                .filter_map(|c| c.get(1).map(|m| m.as_str().to_string()))
+                .collect();
+            if tax_ids.len() >= 2 {
+                if inv.buyer_tax_id.is_empty() {
+                    inv.buyer_tax_id = tax_ids[0].clone();
+                }
+                if inv.seller_tax_id.is_empty() {
+                    inv.seller_tax_id = tax_ids[1].clone();
+                }
+            } else if tax_ids.len() == 1 {
+                if inv.seller_tax_id.is_empty() {
+                    inv.seller_tax_id = tax_ids[0].clone();
+                }
+            }
+        }
+    }
+
+    if !ofd_layout_matched && (inv.buyer_name.is_empty() || inv.seller_name.is_empty()) {
         let re_table =
             Regex::new(r"购\s+名称[：:]\s*(.+?)\s+销\s+名称[：:]\s*(.+?)(?:\s+买|$)").unwrap();
         if let Some(caps) = re_table.captures(&normalized) {
@@ -72,7 +118,7 @@ fn parse_invoice_text(text: &str, inv: &mut models::Invoice) {
         }
     }
 
-    if table_layout_matched {
+    if table_layout_matched || ofd_layout_matched {
         let re_tax_table = Regex::new(
             r"统一社会信用代码\s*/\s*纳税人识别号[：:]\s*(9[A-Z0-9]{15,19})?.*?统一社会信用代码\s*/\s*纳税人识别号[：:]\s*(9[A-Z0-9]{15,19})?",
         )
@@ -114,7 +160,9 @@ fn parse_invoice_text(text: &str, inv: &mut models::Invoice) {
         }
     }
 
-    if !table_layout_matched && inv.buyer_name.is_empty() {
+    let skip_label_regex = table_layout_matched || ofd_layout_matched;
+
+    if !skip_label_regex && inv.buyer_name.is_empty() {
         let re =
             Regex::new(r"购\s*买\s*方.*?名\s*称[：:]\s*([^\s购销]+(?:\s+[^\s购销]+)*)").unwrap();
         if let Some(caps) = re.captures(&normalized) {
@@ -125,7 +173,7 @@ fn parse_invoice_text(text: &str, inv: &mut models::Invoice) {
         }
     }
 
-    if !table_layout_matched && inv.seller_name.is_empty() {
+    if !skip_label_regex && inv.seller_name.is_empty() {
         let re = Regex::new(
             r"销\s*售\s*方.*?名\s*称[：:]\s*([\x{4e00}-\x{9fff}][\x{4e00}-\x{9fff}\w()（）]+)",
         )
@@ -138,21 +186,21 @@ fn parse_invoice_text(text: &str, inv: &mut models::Invoice) {
         }
     }
 
-    if !table_layout_matched && inv.seller_tax_id.is_empty() {
+    if !skip_label_regex && inv.seller_tax_id.is_empty() {
         let re = Regex::new(r"销\s*售\s*方.*?纳税人识别号[：:]\s*(9[A-Z0-9]{15,19})").unwrap();
         if let Some(caps) = re.captures(&normalized) {
             inv.seller_tax_id = caps.get(1).unwrap().as_str().to_string();
         }
     }
 
-    if !table_layout_matched && inv.buyer_tax_id.is_empty() {
+    if !skip_label_regex && inv.buyer_tax_id.is_empty() {
         let re = Regex::new(r"购\s*买\s*方.*?纳税人识别号[：:]\s*(9[A-Z0-9]{15,19})").unwrap();
         if let Some(caps) = re.captures(&normalized) {
             inv.buyer_tax_id = caps.get(1).unwrap().as_str().to_string();
         }
     }
 
-    if !table_layout_matched && (inv.seller_name.is_empty() || inv.buyer_name.is_empty()) {
+    if !skip_label_regex && (inv.seller_name.is_empty() || inv.buyer_name.is_empty()) {
         let re_names = Regex::new(
             r"(\d{4}年\d{2}月\d{2}日)\s+([^\d]+?)\s+([\x{4e00}-\x{9fff}][\x{4e00}-\x{9fff}\w()（） ]+?)\s+(9[A-Z0-9]{15,19})",
         ).unwrap();
@@ -169,7 +217,7 @@ fn parse_invoice_text(text: &str, inv: &mut models::Invoice) {
         }
     }
 
-    if !table_layout_matched && (inv.seller_name.is_empty() || inv.buyer_name.is_empty()) {
+    if !skip_label_regex && (inv.seller_name.is_empty() || inv.buyer_name.is_empty()) {
         let re_names2 = Regex::new(
             r"(\d{4}年\d{2}月\d{2}日)\s+(\S+)\s+([\x{4e00}-\x{9fff}][\x{4e00}-\x{9fff}\w()（）]+)",
         )
