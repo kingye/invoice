@@ -5,6 +5,7 @@ use crate::extract_pdf;
 use crate::extract_xml;
 use crate::models;
 
+#[allow(dead_code)]
 pub fn extract_invoice(path: &str) -> Result<models::Invoice, Box<dyn std::error::Error>> {
     extract_invoice_with_ocr(path, None)
 }
