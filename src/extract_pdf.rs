@@ -775,22 +775,18 @@ mod tests {
 
     #[test]
     fn test_extract_from_pdf_with_ocr_no_model() {
-        std::env::set_var("INVOICE_OCR_MODEL_DIR", "/tmp/nonexistent_ocr_model_test");
         let result = extract_from_pdf_with_ocr(&[], Some("/tmp/nonexistent_ocr_model_test"));
         assert!(result.is_ok());
         let inv = result.unwrap();
         assert!(inv.number.is_empty());
-        std::env::remove_var("INVOICE_OCR_MODEL_DIR");
     }
 
     #[test]
     fn test_extract_from_pdf_with_ocr_invalid_data() {
-        std::env::set_var("INVOICE_OCR_MODEL_DIR", "/tmp/nonexistent_ocr_model_test");
         let result = extract_from_pdf_with_ocr(&[0x00, 0x01, 0x02, 0x03], None);
         assert!(result.is_ok());
         let inv = result.unwrap();
         assert!(inv.number.is_empty());
-        std::env::remove_var("INVOICE_OCR_MODEL_DIR");
     }
 
     #[test]
