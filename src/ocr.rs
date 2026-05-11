@@ -81,6 +81,11 @@ fn download_file(url: &str, path: &PathBuf) -> Result<(), Box<dyn std::error::Er
 
 pub fn get_ocr_engine() -> Result<OcrEngine, Box<dyn std::error::Error>> {
     let dir = ocr_model_dir();
+    get_ocr_engine_with_dir(dir.to_str().unwrap_or("."))
+}
+
+pub fn get_ocr_engine_with_dir(model_dir: &str) -> Result<OcrEngine, Box<dyn std::error::Error>> {
+    let dir = PathBuf::from(model_dir);
     let config = OcrConfig::default();
     let engine = OcrEngine::new(
         dir.join("det.onnx"),

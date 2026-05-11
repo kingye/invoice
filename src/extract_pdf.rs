@@ -2,16 +2,60 @@ use crate::models;
 use regex::Regex;
 
 pub fn extract_from_pdf(data: &[u8]) -> Result<models::Invoice, Box<dyn std::error::Error>> {
+    extract_from_pdf_with_ocr(data, None)
+}
+
+pub fn extract_from_pdf_with_ocr(
+    data: &[u8],
+    ocr_model_dir: Option<&str>,
+) -> Result<models::Invoice, Box<dyn std::error::Error>> {
     let mut inv = models::Invoice::default();
 
     if let Ok(doc) = pdf_oxide::PdfDocument::from_bytes(data.to_vec()) {
         let text = doc.extract_all_text().unwrap_or_default();
         if !text.trim().is_empty() {
             parse_invoice_text(&text, &mut inv);
+        } else if let Some(model_dir) = ocr_model_dir {
+            if let Ok(engine) = crate::ocr::get_ocr_engine_with_dir(model_dir) {
+                try_ocr_extraction(&doc, &engine, &mut inv);
+            }
+        } else if crate::ocr::model_files_exist() {
+            if let Ok(engine) = crate::ocr::get_ocr_engine() {
+                try_ocr_extraction(&doc, &engine, &mut inv);
+            }
         }
     }
 
     Ok(inv)
+}
+
+fn try_ocr_extraction(
+    doc: &pdf_oxide::PdfDocument,
+    engine: &pdf_oxide::ocr::OcrEngine,
+    inv: &mut models::Invoice,
+) {
+    let page_count = doc.page_count().unwrap_or(0);
+    let mut all_text = String::new();
+
+    for page in 0..page_count {
+        if let Ok(true) = pdf_oxide::ocr::needs_ocr(doc, page) {
+            let options = pdf_oxide::ocr::OcrExtractOptions::default();
+            if let Ok(text) =
+                pdf_oxide::ocr::extract_text_with_ocr(doc, page, Some(engine), options)
+            {
+                if !text.trim().is_empty() {
+                    if !all_text.is_empty() {
+                        all_text.push(' ');
+                    }
+                    all_text.push_str(&text);
+                }
+            }
+        }
+    }
+
+    if !all_text.trim().is_empty() {
+        parse_invoice_text(&all_text, inv);
+    }
 }
 
 fn parse_invoice_text(text: &str, inv: &mut models::Invoice) {
