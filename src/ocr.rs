@@ -8,12 +8,12 @@ const OCR_MODEL_DIR_NAME: &str = ".invoice/ocr";
 
 const MODEL_FILES: [&str; 3] = ["det.onnx", "rec.onnx", "dict.txt"];
 
-const DET_MODEL_URL: &str =
-    "https://paddleocr.bj.bcebos.com/PP-OCRv4/chinese/ch_PP-OCRv4_det_onnx.onnx";
-const REC_MODEL_URL: &str =
-    "https://paddleocr.bj.bcebos.com/PP-OCRv4/chinese/ch_PP-OCRv4_rec_onnx.onnx";
-const DICT_URL: &str =
-    "https://raw.githubusercontent.com/PaddlePaddle/PaddleOCR/main/ppocr/utils/ppocr_keys_v1.txt";
+const MODEL_VERSION: &str = "v0.2.0-models";
+const MODEL_BASE: &str = "https://github.com/kingye/invoice/releases/download";
+
+fn model_url(filename: &str) -> String {
+    format!("{}/{}/{}", MODEL_BASE, MODEL_VERSION, filename)
+}
 
 pub fn ocr_model_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("INVOICE_OCR_MODEL_DIR") {
@@ -46,7 +46,7 @@ pub fn download_models() -> Result<(), Box<dyn std::error::Error>> {
 
     if !det_path.exists() {
         println!("Downloading detection model...");
-        download_file_atomic(DET_MODEL_URL, &det_path)?;
+        download_file_atomic(&model_url("det.onnx"), &det_path)?;
         println!("  Detection model saved to {}", det_path.display());
     } else {
         println!("Detection model already exists, skipping.");
@@ -54,7 +54,7 @@ pub fn download_models() -> Result<(), Box<dyn std::error::Error>> {
 
     if !rec_path.exists() {
         println!("Downloading recognition model...");
-        download_file_atomic(REC_MODEL_URL, &rec_path)?;
+        download_file_atomic(&model_url("rec.onnx"), &rec_path)?;
         println!("  Recognition model saved to {}", rec_path.display());
     } else {
         println!("Recognition model already exists, skipping.");
@@ -62,7 +62,7 @@ pub fn download_models() -> Result<(), Box<dyn std::error::Error>> {
 
     if !dict_path.exists() {
         println!("Downloading character dictionary...");
-        download_file_atomic(DICT_URL, &dict_path)?;
+        download_file_atomic(&model_url("dict.txt"), &dict_path)?;
         println!("  Dictionary saved to {}", dict_path.display());
     } else {
         println!("Dictionary already exists, skipping.");
