@@ -71,11 +71,36 @@ pub fn download_models() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn github_token() -> Option<String> {
+    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+        if !token.is_empty() {
+            return Some(token);
+        }
+    }
+    std::process::Command::new("gh")
+        .args(["auth", "token"])
+        .output()
+        .ok()
+        .and_then(|output| {
+            if output.status.success() {
+                let token = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !token.is_empty() {
+                    return Some(token);
+                }
+            }
+            None
+        })
+}
+
 fn download_file_atomic(url: &str, path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     let tmp_path = path.with_extension("tmp");
 
     let result = (|| -> Result<(), Box<dyn std::error::Error>> {
-        let response = ureq::get(url).call()?;
+        let mut req = ureq::get(url);
+        if let Some(token) = github_token() {
+            req = req.header("Authorization", &format!("Bearer {}", token));
+        }
+        let response = req.call()?;
         let mut reader = response.into_body().into_reader();
         let mut file = fs::File::create(&tmp_path)?;
         std::io::copy(&mut reader, &mut file)?;
