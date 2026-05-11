@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
 
 use pdf_oxide::ocr::{OcrConfig, OcrEngine};
@@ -8,9 +9,9 @@ const OCR_MODEL_DIR_NAME: &str = ".invoice/ocr";
 const MODEL_FILES: [&str; 3] = ["det.onnx", "rec.onnx", "dict.txt"];
 
 const DET_MODEL_URL: &str =
-    "https://paddleocr.bj.bcebos.com/PP-OCRv4/chinese/ch_PP-OCRv4_det_infer.tar";
+    "https://paddleocr.bj.bcebos.com/PP-OCRv4/chinese/ch_PP-OCRv4_det_onnx.onnx";
 const REC_MODEL_URL: &str =
-    "https://paddleocr.bj.bcebos.com/PP-OCRv4/chinese/ch_PP-OCRv4_rec_infer.tar";
+    "https://paddleocr.bj.bcebos.com/PP-OCRv4/chinese/ch_PP-OCRv4_rec_onnx.onnx";
 const DICT_URL: &str =
     "https://raw.githubusercontent.com/PaddlePaddle/PaddleOCR/main/ppocr/utils/ppocr_keys_v1.txt";
 
@@ -27,7 +28,7 @@ fn dirs_home() -> PathBuf {
     std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("."))
+        .unwrap_or_else(|_| PathBuf::from("/tmp"))
 }
 
 pub fn model_files_exist() -> bool {
@@ -45,7 +46,7 @@ pub fn download_models() -> Result<(), Box<dyn std::error::Error>> {
 
     if !det_path.exists() {
         println!("Downloading detection model...");
-        download_file(DET_MODEL_URL, &det_path)?;
+        download_file_atomic(DET_MODEL_URL, &det_path)?;
         println!("  Detection model saved to {}", det_path.display());
     } else {
         println!("Detection model already exists, skipping.");
@@ -53,7 +54,7 @@ pub fn download_models() -> Result<(), Box<dyn std::error::Error>> {
 
     if !rec_path.exists() {
         println!("Downloading recognition model...");
-        download_file(REC_MODEL_URL, &rec_path)?;
+        download_file_atomic(REC_MODEL_URL, &rec_path)?;
         println!("  Recognition model saved to {}", rec_path.display());
     } else {
         println!("Recognition model already exists, skipping.");
@@ -61,7 +62,7 @@ pub fn download_models() -> Result<(), Box<dyn std::error::Error>> {
 
     if !dict_path.exists() {
         println!("Downloading character dictionary...");
-        download_file(DICT_URL, &dict_path)?;
+        download_file_atomic(DICT_URL, &dict_path)?;
         println!("  Dictionary saved to {}", dict_path.display());
     } else {
         println!("Dictionary already exists, skipping.");
@@ -70,18 +71,33 @@ pub fn download_models() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn download_file(url: &str, path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-    let response = ureq::get(url).call()?;
+fn download_file_atomic(url: &str, path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    let tmp_path = path.with_extension("tmp");
 
-    let mut reader = response.into_body().into_reader();
-    let mut file = fs::File::create(path)?;
-    std::io::copy(&mut reader, &mut file)?;
-    Ok(())
+    let result = (|| -> Result<(), Box<dyn std::error::Error>> {
+        let response = ureq::get(url).call()?;
+        let mut reader = response.into_body().into_reader();
+        let mut file = fs::File::create(&tmp_path)?;
+        std::io::copy(&mut reader, &mut file)?;
+        file.flush()?;
+        Ok(())
+    })();
+
+    match result {
+        Ok(()) => {
+            fs::rename(&tmp_path, path)?;
+            Ok(())
+        }
+        Err(e) => {
+            let _ = fs::remove_file(&tmp_path);
+            Err(e)
+        }
+    }
 }
 
 pub fn get_ocr_engine() -> Result<OcrEngine, Box<dyn std::error::Error>> {
     let dir = ocr_model_dir();
-    get_ocr_engine_with_dir(dir.to_str().unwrap_or("."))
+    get_ocr_engine_with_dir(dir.to_str().unwrap_or("/tmp"))
 }
 
 pub fn get_ocr_engine_with_dir(model_dir: &str) -> Result<OcrEngine, Box<dyn std::error::Error>> {
@@ -99,36 +115,77 @@ pub fn get_ocr_engine_with_dir(model_dir: &str) -> Result<OcrEngine, Box<dyn std
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_ocr_model_dir_env_override() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let prev = std::env::var("INVOICE_OCR_MODEL_DIR").ok();
         std::env::set_var("INVOICE_OCR_MODEL_DIR", "/tmp/test_ocr_models");
         let dir = ocr_model_dir();
         assert_eq!(dir, PathBuf::from("/tmp/test_ocr_models"));
-        std::env::remove_var("INVOICE_OCR_MODEL_DIR");
+        match prev {
+            Some(v) => std::env::set_var("INVOICE_OCR_MODEL_DIR", v),
+            None => std::env::remove_var("INVOICE_OCR_MODEL_DIR"),
+        }
     }
 
     #[test]
     fn test_model_files_exist_missing() {
-        std::env::set_var("INVOICE_OCR_MODEL_DIR", "/tmp/nonexistent_ocr_test_dir");
+        let _lock = ENV_LOCK.lock().unwrap();
+        let prev = std::env::var("INVOICE_OCR_MODEL_DIR").ok();
+        std::env::set_var(
+            "INVOICE_OCR_MODEL_DIR",
+            "/tmp/nonexistent_ocr_test_dir_12345",
+        );
         assert!(!model_files_exist());
-        std::env::remove_var("INVOICE_OCR_MODEL_DIR");
+        match prev {
+            Some(v) => std::env::set_var("INVOICE_OCR_MODEL_DIR", v),
+            None => std::env::remove_var("INVOICE_OCR_MODEL_DIR"),
+        }
     }
 
     #[test]
     fn test_download_models_skip_existing() {
+        let _lock = ENV_LOCK.lock().unwrap();
         let dir = std::env::temp_dir().join("invoice_ocr_test_existing");
         fs::create_dir_all(&dir).ok();
         fs::write(dir.join("det.onnx"), "fake").ok();
         fs::write(dir.join("rec.onnx"), "fake").ok();
         fs::write(dir.join("dict.txt"), "fake").ok();
 
+        let prev = std::env::var("INVOICE_OCR_MODEL_DIR").ok();
         std::env::set_var("INVOICE_OCR_MODEL_DIR", dir.to_str().unwrap());
 
         let result = download_models();
         assert!(result.is_ok());
 
-        std::env::remove_var("INVOICE_OCR_MODEL_DIR");
+        match prev {
+            Some(v) => std::env::set_var("INVOICE_OCR_MODEL_DIR", v),
+            None => std::env::remove_var("INVOICE_OCR_MODEL_DIR"),
+        }
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_download_file_atomic_cleanup_on_error() {
+        let dir = std::env::temp_dir().join("invoice_ocr_test_atomic");
+        fs::create_dir_all(&dir).ok();
+        let target = dir.join("should_not_exist.onnx");
+
+        let result = download_file_atomic("http://invalid.host.invalid/file", &target);
+        assert!(result.is_err());
+        assert!(!target.exists());
+        assert!(!dir.join("should_not_exist.tmp").exists());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_dirs_home_fallback() {
+        let home = dirs_home();
+        assert_ne!(home, PathBuf::from("."));
     }
 }
