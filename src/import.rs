@@ -6,6 +6,13 @@ use crate::extract_xml;
 use crate::models;
 
 pub fn extract_invoice(path: &str) -> Result<models::Invoice, Box<dyn std::error::Error>> {
+    extract_invoice_with_ocr(path, None)
+}
+
+pub fn extract_invoice_with_ocr(
+    path: &str,
+    ocr_model_dir: Option<&str>,
+) -> Result<models::Invoice, Box<dyn std::error::Error>> {
     let file_path = Path::new(path);
     let ext = file_path
         .extension()
@@ -19,7 +26,7 @@ pub fn extract_invoice(path: &str) -> Result<models::Invoice, Box<dyn std::error
     //   3. XML/OFD supplement (last resort) — fills fields still empty after 1 & 2
 
     let mut inv = match ext.as_str() {
-        "pdf" => extract_from_pdf(path)?,
+        "pdf" => extract_from_pdf(path, ocr_model_dir)?,
         "xml" => extract_from_xml(path)?,
         "ofd" => extract_from_ofd(path)?,
         "zip" => extract_from_zip(path)?,
@@ -35,9 +42,12 @@ pub fn extract_invoice(path: &str) -> Result<models::Invoice, Box<dyn std::error
     Ok(inv)
 }
 
-fn extract_from_pdf(path: &str) -> Result<models::Invoice, Box<dyn std::error::Error>> {
+fn extract_from_pdf(
+    path: &str,
+    ocr_model_dir: Option<&str>,
+) -> Result<models::Invoice, Box<dyn std::error::Error>> {
     let data = std::fs::read(path)?;
-    extract_pdf::extract_from_pdf(&data)
+    extract_pdf::extract_from_pdf_with_ocr(&data, ocr_model_dir)
 }
 
 fn extract_from_xml(path: &str) -> Result<models::Invoice, Box<dyn std::error::Error>> {
