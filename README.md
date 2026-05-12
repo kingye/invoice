@@ -199,6 +199,54 @@ invoice export --month 2026-04 --output ./preview/
 invoice --version
 ```
 
+### MCP Server 配置
+
+`invoice` 支持 [Model Context Protocol (MCP)](https://modelcontextprotocol.io/)，可作为 MCP Server 供 AI Agent 直接调用。
+
+```bash
+invoice mcp
+```
+
+#### 在 Claude Code 中使用
+
+```json
+{
+  "mcpServers": {
+    "invoice": {
+      "command": "invoice",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+#### 在 opencode 中使用
+
+```json
+{
+  "mcpServers": {
+    "invoice": {
+      "command": "invoice",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+配置后，Agent 可自动发现以下 tool 并进行发票管理：
+
+| Tool | 功能 |
+|------|------|
+| `invoice_init` | 初始化数据库，下载 OCR 模型 |
+| `invoice_add` | 手动添加发票 |
+| `invoice_list` | 列出发票（支持筛选） |
+| `invoice_show` | 查看发票详情 |
+| `invoice_edit` | 编辑发票字段 |
+| `invoice_delete` | 删除发票 |
+| `invoice_import` | 从文件导入发票（PDF） |
+| `invoice_close` | 月结/年结 |
+| `invoice_export` | 导出报表 |
+
 ## 数据存储
 
 所有数据存储在当前目录的 `.invoice/` 下：
@@ -235,6 +283,8 @@ invoice --version
 src/
 ├── main.rs        # 入口
 ├── cli.rs         # CLI 命令定义和路由
+├── ops.rs         # 核心业务逻辑（供 CLI 和 MCP 共用）
+├── mcp.rs         # MCP Server（9 个 tool）
 ├── db.rs          # SQLite 数据库层
 ├── models.rs      # 数据模型 (Invoice, Attachment, Closing)
 ├── import.rs      # 发票导入核心逻辑（格式检测、提取、入库）

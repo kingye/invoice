@@ -404,9 +404,9 @@ fn parse_invoice_text(text: &str, inv: &mut models::Invoice) {
             }
         }
         // Seller: "名 称:<Chinese name>" followed by "销"
-        let re_trad_seller = Regex::new(
-            r"名\s*称[：:]\s*([\x{4e00}-\x{9fff}][\x{4e00}-\x{9fff}\w()（）]+)\s+销"
-        ).unwrap();
+        let re_trad_seller =
+            Regex::new(r"名\s*称[：:]\s*([\x{4e00}-\x{9fff}][\x{4e00}-\x{9fff}\w()（）]+)\s+销")
+                .unwrap();
         if let Some(caps) = re_trad_seller.captures(&normalized) {
             if inv.seller_name.is_empty() {
                 inv.seller_name = caps.get(1).unwrap().as_str().to_string();

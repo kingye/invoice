@@ -1,11 +1,7 @@
 use clap::{Parser, Subcommand};
 
-use crate::attachment;
 use crate::closing;
-use crate::db;
-use crate::import;
-use crate::models;
-use crate::report;
+use crate::ops;
 
 #[derive(Parser)]
 #[command(name = "invoice", version = "0.1.0", about = "轻量级命令行记账系统")]
@@ -121,6 +117,7 @@ pub enum Commands {
         #[arg(long)]
         ocr_model_dir: Option<String>,
     },
+    Mcp,
 }
 
 pub fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
@@ -206,42 +203,16 @@ pub fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             dry_run,
             ocr_model_dir.as_deref(),
         ),
+        Commands::Mcp => {
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(crate::mcp::run_server())
+        }
     }
-}
-
-fn open_db() -> Result<rusqlite::Connection, Box<dyn std::error::Error>> {
-    let conn = db::init_db()?;
-    db::init_schema(&conn)?;
-    Ok(conn)
 }
 
 fn cmd_init() -> Result<(), Box<dyn std::error::Error>> {
-    let conn = db::init_db()?;
-    db::init_schema(&conn)?;
-    let cwd = std::env::current_dir()?;
-    println!(
-        "Initialized invoice database in {}/.invoice/invoice.db",
-        cwd.display()
-    );
-
-    if crate::ocr::model_files_exist() {
-        println!(
-            "OCR models already exist at {}",
-            crate::ocr::ocr_model_dir().display()
-        );
-    } else {
-        println!("Downloading OCR models...");
-        if let Err(e) = crate::ocr::download_models() {
-            eprintln!("Warning: Failed to download OCR models: {}", e);
-            println!("You can manually download them later with `invoice init`");
-        } else {
-            println!(
-                "OCR models downloaded to {}",
-                crate::ocr::ocr_model_dir().display()
-            );
-        }
-    }
-
+    let result = ops::init_database()?;
+    println!("{}", result);
     Ok(())
 }
 
@@ -262,30 +233,25 @@ fn cmd_add(
     remark: &str,
     attach_paths: &[String],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let conn = open_db()?;
-    let inv = models::Invoice {
-        number: number.to_string(),
-        date: date.to_string(),
-        inv_type: inv_type.to_string(),
-        item_name: item_name.to_string(),
+    let conn = ops::open_db()?;
+    let id = ops::add_invoice(
+        &conn,
+        number,
+        date,
+        inv_type,
+        item_name,
         amount,
         tax_rate,
         tax,
         total,
-        seller_name: seller_name.to_string(),
-        seller_tax_id: seller_tax_id.to_string(),
-        buyer_name: buyer_name.to_string(),
-        buyer_tax_id: buyer_tax_id.to_string(),
-        category: category.to_string(),
-        remark: remark.to_string(),
-        ..Default::default()
-    };
-    let id = db::insert_invoice(&conn, &inv)?;
-    for att_path in attach_paths {
-        if let Err(e) = attachment::add_attachment(&conn, id, number, att_path) {
-            eprintln!("Failed to add attachment '{}': {}", att_path, e);
-        }
-    }
+        seller_name,
+        seller_tax_id,
+        buyer_name,
+        buyer_tax_id,
+        category,
+        remark,
+        attach_paths,
+    )?;
     println!("Invoice added with id={}", id);
     Ok(())
 }
@@ -295,8 +261,8 @@ fn cmd_list(
     year: Option<&str>,
     category: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let conn = open_db()?;
-    let invoices = db::query_invoices(&conn, month, year, category)?;
+    let conn = ops::open_db()?;
+    let invoices = ops::list_invoices(&conn, month, year, category)?;
     println!(
         "{:>4}  {:<20} {:<12} {:<10} {:<12} {:>10} {:>6} {:>8} {:>10} {:<16}",
         "ID", "Number", "Date", "Type", "Item", "Amount", "Tax%", "Tax", "Total", "Seller"
@@ -321,8 +287,8 @@ fn cmd_list(
 }
 
 fn cmd_show(id: i64) -> Result<(), Box<dyn std::error::Error>> {
-    let conn = open_db()?;
-    match db::get_invoice(&conn, id)? {
+    let conn = ops::open_db()?;
+    match ops::get_invoice(&conn, id)? {
         Some(inv) => {
             println!("Invoice #{}", inv.id);
             println!("  Number:       {}", inv.number);
@@ -342,7 +308,7 @@ fn cmd_show(id: i64) -> Result<(), Box<dyn std::error::Error>> {
             println!("  Created:      {}", inv.created_at);
             println!("  Updated:      {}", inv.updated_at);
 
-            let atts = db::get_attachments_for_invoice(&conn, id)?;
+            let atts = ops::get_attachments(&conn, id)?;
             println!("\n  Attachments:");
             if atts.is_empty() {
                 println!("    (none)");
@@ -378,17 +344,10 @@ fn cmd_edit(
     remark: Option<String>,
     attach_paths: &[String],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let conn = open_db()?;
-
-    if closing::check_invoice_closed(&conn, id)? {
-        println!(
-            "Error: Invoice #{} is in a closed period and cannot be modified",
-            id
-        );
-        return Ok(());
-    }
-
-    let updates = models::InvoiceUpdate {
+    let conn = ops::open_db()?;
+    match ops::edit_invoice(
+        &conn,
+        id,
         number,
         date,
         inv_type,
@@ -403,39 +362,49 @@ fn cmd_edit(
         buyer_tax_id,
         category,
         remark,
-    };
-    let changed = db::update_invoice(&conn, id, &updates)?;
-    if changed > 0 {
-        println!("Invoice #{} updated", id);
-    } else {
-        println!("Invoice #{} not found", id);
-    }
-
-    for att_path in attach_paths {
-        if let Ok(inv_number) = db::get_invoice_number(&conn, id) {
-            match attachment::add_attachment(&conn, id, &inv_number, att_path) {
-                Ok(()) => println!("  Attachment added: {}", att_path),
-                Err(e) => eprintln!("Failed to add attachment '{}': {}", att_path, e),
+        attach_paths,
+    ) {
+        Ok(changed) => {
+            if changed > 0 {
+                println!("Invoice #{} updated", id);
+            } else {
+                println!("Invoice #{} not found", id);
             }
+        }
+        Err(e) => {
+            if e.downcast_ref::<ops::InvoiceError>().is_some() {
+                println!(
+                    "Error: Invoice #{} is in a closed period and cannot be modified",
+                    id
+                );
+                return Ok(());
+            }
+            return Err(e);
         }
     }
     Ok(())
 }
 
 fn cmd_delete(id: i64) -> Result<(), Box<dyn std::error::Error>> {
-    let conn = open_db()?;
-    if closing::check_invoice_closed(&conn, id)? {
-        println!(
-            "Error: Invoice #{} is in a closed period and cannot be deleted",
-            id
-        );
-        return Ok(());
-    }
-    let changed = db::delete_invoice(&conn, id)?;
-    if changed > 0 {
-        println!("Invoice #{} deleted", id);
-    } else {
-        println!("Invoice #{} not found", id);
+    let conn = ops::open_db()?;
+    match ops::delete_invoice(&conn, id) {
+        Ok(changed) => {
+            if changed > 0 {
+                println!("Invoice #{} deleted", id);
+            } else {
+                println!("Invoice #{} not found", id);
+            }
+        }
+        Err(e) => {
+            if e.downcast_ref::<ops::InvoiceError>().is_some() {
+                println!(
+                    "Error: Invoice #{} is in a closed period and cannot be deleted",
+                    id
+                );
+                return Ok(());
+            }
+            return Err(e);
+        }
     }
     Ok(())
 }
@@ -449,18 +418,23 @@ fn cmd_close(month: Option<&str>, year: Option<&str>) -> Result<(), Box<dyn std:
             return Ok(());
         }
     };
-    let conn = open_db()?;
-    match closing::close_period(&conn, close_type, period) {
+    let conn = ops::open_db()?;
+    match ops::close_period(&conn, close_type, period) {
         Ok(()) => println!(
             "Period {} closed successfully. Archive: .invoice/close_{}.zip",
             period, period
         ),
         Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("already closed") {
-                println!("Error: Period {} is already closed", period);
-            } else if msg.contains("No invoices") {
-                println!("Error: No invoices found for period {}", period);
+            if let Some(inv_err) = e.downcast_ref::<ops::InvoiceError>() {
+                match inv_err {
+                    ops::InvoiceError::AlreadyClosed(_) => {
+                        println!("Error: Period {} is already closed", period);
+                    }
+                    ops::InvoiceError::NoInvoices(_) => {
+                        println!("Error: No invoices found for period {}", period);
+                    }
+                    _ => return Err(e),
+                }
             } else {
                 return Err(e);
             }
@@ -482,21 +456,33 @@ fn cmd_export(
             return Ok(());
         }
     };
-    let conn = open_db()?;
-    let invoices = closing::query_invoices_for_period(&conn, close_type, period)?;
-    if invoices.is_empty() {
-        println!("No invoices found for period {}", period);
-        return Ok(());
+    let conn = ops::open_db()?;
+    match ops::export_reports(&conn, close_type, period, output_dir) {
+        Ok((_invoices, detail_path, summary_path)) => {
+            println!("Reports exported to {}/", output_dir);
+            println!(
+                "  Detail: {}",
+                std::path::Path::new(&detail_path)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(&detail_path)
+            );
+            println!(
+                "  Summary: {}",
+                std::path::Path::new(&summary_path)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(&summary_path)
+            );
+        }
+        Err(e) => {
+            if let Some(ops::InvoiceError::NoInvoices(_)) = e.downcast_ref::<ops::InvoiceError>() {
+                println!("No invoices found for period {}", period);
+                return Ok(());
+            }
+            return Err(e);
+        }
     }
-    std::fs::create_dir_all(output_dir)?;
-    let detail_path = format!("{}/明细表_{}.xlsx", output_dir, period);
-    let summary_path = format!("{}/汇总表_{}.xlsx", output_dir, period);
-    report::generate_detail_report(&invoices, &detail_path)?;
-    let summary_entries = report::compute_summary(&invoices);
-    report::generate_summary_report(&summary_entries, &summary_path)?;
-    println!("Reports exported to {}/", output_dir);
-    println!("  Detail: 明细表_{}.xlsx", period);
-    println!("  Summary: 汇总表_{}.xlsx", period);
     Ok(())
 }
 
@@ -507,47 +493,14 @@ fn cmd_import(
     dry_run: bool,
     ocr_model_dir: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let ocr_dir = match ocr_model_dir {
-        Some(dir) => Some(dir.to_string()),
-        None if crate::ocr::model_files_exist() => Some(
-            crate::ocr::ocr_model_dir()
-                .to_str()
-                .unwrap_or("")
-                .to_string(),
-        ),
-        None => None,
-    };
-
-    let extracted = import::extract_invoice_with_ocr(path, ocr_dir.as_deref())?;
-    let mut inv = extracted;
-
-    if inv.number.is_empty() && inv.seller_name.is_empty() && ocr_dir.is_none() {
-        let ext = std::path::Path::new(path)
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
-        if ext == "pdf" && !crate::ocr::model_files_exist() {
-            eprintln!(
-                "Hint: No text extracted from PDF. OCR models not found — run `invoice init` to download them."
-            );
-        }
-    }
-    if let Some(cat) = category {
-        inv.category = cat.to_string();
-    }
-    if let Some(rem) = remark {
-        inv.remark = rem.to_string();
-    }
+    let inv = ops::import_invoice(path, category, remark, ocr_model_dir)?;
     if dry_run {
         let json = serde_json::to_string_pretty(&inv)?;
         println!("{}", json);
         return Ok(());
     }
-    let conn = open_db()?;
-    let id = db::insert_invoice(&conn, &inv)?;
-    if let Err(e) = attachment::add_attachment(&conn, id, &inv.number, path) {
-        eprintln!("Warning: Failed to save original file as attachment: {}", e);
-    }
+    let conn = ops::open_db()?;
+    let id = ops::insert_imported_invoice(&conn, &inv, path)?;
     println!("Invoice imported with id={}", id);
     Ok(())
 }
