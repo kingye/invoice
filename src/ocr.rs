@@ -72,7 +72,7 @@ pub fn download_models() -> Result<(), Box<dyn std::error::Error>> {
 
 fn download_file_atomic(url: &str, path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     let tls_config = ureq::tls::TlsConfig::builder()
-        .provider(ureq::tls::TlsProvider::NativeTls)
+        .root_certs(ureq::tls::RootCerts::PlatformVerifier)
         .build();
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .tls_config(tls_config)
