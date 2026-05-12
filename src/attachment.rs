@@ -40,7 +40,7 @@ pub fn add_attachment(
         total_written += bytes_read as u64;
     }
 
-    let hash_hex = format!("{:x}", hasher.finalize());
+    let hash_hex = hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect::<String>();
     let db_path = format!(".invoice/data/{}/{}", invoice_number, filename);
 
     let att = models::Attachment {
@@ -59,9 +59,15 @@ pub fn add_attachment(
 mod tests {
     use super::*;
     use crate::db;
+    use std::sync::Mutex;
+
+    // Tests that call set_current_dir must be serialized to avoid race conditions
+    static CWD_MUTEX: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_add_attachment_and_hash() {
+        let _lock = CWD_MUTEX.lock().unwrap();
+
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("invoice.db");
         let conn = rusqlite::Connection::open(&db_path).unwrap();
@@ -82,6 +88,7 @@ mod tests {
         std::env::set_current_dir(dir.path()).unwrap();
 
         let result = add_attachment(&conn, id, "ATT001", src_file.to_str().unwrap());
+        std::env::set_current_dir(&orig_dir).unwrap();
         assert!(result.is_ok());
 
         let atts = db::get_attachments_for_invoice(&conn, id).unwrap();
@@ -97,14 +104,14 @@ mod tests {
 
         let mut hasher = Sha256::new();
         hasher.update(b"hello world attachment");
-        let expected_hash = format!("{:x}", hasher.finalize());
+        let expected_hash = hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect::<String>();
         assert_eq!(atts[0].file_hash, expected_hash);
-
-        std::env::set_current_dir(&orig_dir).unwrap();
     }
 
     #[test]
     fn test_add_attachment_file_not_found() {
+        let _lock = CWD_MUTEX.lock().unwrap();
+
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("invoice.db");
         let conn = rusqlite::Connection::open(&db_path).unwrap();
@@ -122,8 +129,7 @@ mod tests {
         std::env::set_current_dir(dir.path()).unwrap();
 
         let result = add_attachment(&conn, id, "ATT002", "/nonexistent/file.pdf");
-        assert!(result.is_err());
-
         std::env::set_current_dir(&orig_dir).unwrap();
+        assert!(result.is_err());
     }
 }

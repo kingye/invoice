@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<EInvoice>
+    <Header>
+        <EIid>26312000002413346011</EIid>
+        <EInvoiceTag>SWEI3100</EInvoiceTag>
+        <Version>0.37</Version>
+        <InherentLabel>
+            <InIssuType>
+                <LabelCode>Y</LabelCode>
+                <LabelName>是否蓝字发票标志</LabelName>
+            </InIssuType>
+            <EInvoiceType>
+                <LabelCode>01</LabelCode>
+                <LabelName>电子发票</LabelName>
+            </EInvoiceType>
+            <GeneralOrSpecialVAT>
+                <LabelCode>02</LabelCode>
+                <LabelName>普通发票</LabelName>
+            </GeneralOrSpecialVAT>
+            <TaxpayerType>
+                <LabelCode>1</LabelCode>
+                <LabelName>一般纳税人</LabelName>
+            </TaxpayerType>
+        </InherentLabel>
+        <UndefinedLabel>
+            <Label>
+                <LabelType>发票开具方式标签</LabelType>
+                <LabelCode>1</LabelCode>
+                <LabelName>网页开票</LabelName>
+            </Label>
+        </UndefinedLabel>
+    </Header>
+    <EInvoiceData>
+        <SellerInformation>
+            <SellerIdNum>91310000MA1H3J0A41</SellerIdNum>
+            <SellerName>上海鼎寰餐饮管理有限公司</SellerName>
+            <SellerAddr>中国（上海）自由贸易试验区金科路3057号、亮景路55号二层C2-1、L2-1室</SellerAddr>
+            <SellerTelNum>021-58887726</SellerTelNum>
+            <SellerBankName>招商银行股份有限公司上海荣科路支行</SellerBankName>
+            <SellerBankAccNum>121941309610501</SellerBankAccNum>
+        </SellerInformation>
+        <BuyerInformation>
+            <BuyerName>CHENG QING</BuyerName>
+        </BuyerInformation>
+        <BasicInformation>
+            <TotalAmWithoutTax>383.02</TotalAmWithoutTax>
+            <TotalTaxAm>22.98</TotalTaxAm>
+            <TotalTax-includedAmount>406.00</TotalTax-includedAmount>
+            <TotalTax-includedAmountInChinese>肆佰零陆圆整</TotalTax-includedAmountInChinese>
+            <Drawer>刁华停</Drawer>
+            <RequestTime>2026-04-20 18:14:14</RequestTime>
+        </BasicInformation>
+        <IssuItemInformation>
+            <ItemName>*餐饮服务*餐饮服务</ItemName>
+            <Quantity>1</Quantity>
+            <UnPrice>383.02</UnPrice>
+            <Amount>383.02</Amount>
+            <TaxRate>0.06</TaxRate>
+            <ComTaxAm>22.98</ComTaxAm>
+            <TotaltaxIncludedAmount>406.00</TotaltaxIncludedAmount>
+            <TaxClassificationCode>3070401000000000000</TaxClassificationCode>
+        </IssuItemInformation>
+        <SpecificInformation/>
+        <AdditionalInformation/>
+    </EInvoiceData>
+    <SellerAuthentication>
+        <AuthenticationMethods>01</AuthenticationMethods>
+    </SellerAuthentication>
+    <TaxSupervisionInfo>
+        <InvoiceNumber>26312000002413346011</InvoiceNumber>
+        <IssueTime>2026-04-20</IssueTime>
+        <TaxBureauCode>13100000000</TaxBureauCode>
+        <TaxBureauName>国家税务总局上海市税务局</TaxBureauName>
+    </TaxSupervisionInfo>
+    <TaxBureauSignature>
+        <Reference URI="/Einvoice/Header|/Einvoice/EinvoiceData|/Einvoice/SellerAuthentication|/Einvoice/TaxSupervisionInfo|/Einvoice/TaxBureauSignature/SignatureTime"/>
+        <SignatureAlgorithm>1.2.156.10197.1.501</SignatureAlgorithm>
+        <SignatureFormat>DETACH</SignatureFormat>
+        <SignatureTime>2026-04-20 18:17:09</SignatureTime>
+        <SignatureValue>30820179060a2a811ccf550601040202a082016930820165020101310e300c06082a811ccf550183110500300c060a2a811ccf550601040201318201403082013c02010130623058310b300906035504061302434e311b3019060355040b0c12e59bbde5aeb6e7a88ee58aa1e680bbe5b180312c302a06035504030c23e7a88ee58aa1e794b5e5ad90e8af81e4b9a6e7aea1e79086e4b8ade5bf8328534d32290206030000002631300c06082a811ccf550183110500a06e301906092a864886f70d010903310c060a2a811ccf550601040201302f06092a864886f70d01090431220420eb9c67462ad629b9fea029045c0b1374923890aa1592cb5ca607779dfe71cad33020060a2a864886f70d010919043112021032303139303930313030303030304153300c06082a811ccf55018375050004473045022100ccacc6e50bd378a829dfd0a7b01a0232ade2da078cf58a58d657baad5b50300b022067ab2ca5be9ec92376c086e1488c22125e44ee18bb56952ebd8eec0719c1ad1e&amp;MjAyNjA0MjAgMTgxNzA5</SignatureValue>
+        <KeyInfo/>
+    </TaxBureauSignature>
+</EInvoice>
