@@ -4,7 +4,52 @@
 
 ## 安装
 
-需要 Rust 1.70+ 和 C 编译器（用于 SQLite 静态链接）。OCR 功能需要 ONNX Runtime（pdf_oxide 内置，使用 `ort` crate 静态链接）。
+需要 Rust 1.70+ 和 C 编译器（用于 SQLite 静态链接）。OCR 功能需要 ONNX Runtime（pdf_oxide 使用 `ort` crate 动态加载）。
+
+### 安装 ONNX Runtime
+
+OCR 功能（扫描件 PDF 文字识别）依赖 ONNX Runtime 动态库。如果不需要 OCR，可跳过此步。
+
+**macOS (Homebrew):**
+
+```bash
+brew install onnxruntime
+```
+
+运行时需设置环境变量指向动态库：
+
+```bash
+export ORT_DYLIB_PATH=/opt/homebrew/lib/libonnxruntime.dylib
+```
+
+**Linux (Ubuntu/Debian):**
+
+```bash
+# 下载 ONNX Runtime (以 1.17.0 为例，请根据需要替换版本号)
+wget https://github.com/microsoft/onnxruntime/releases/download/v1.17.0/onnxruntime-linux-x64-1.17.0.tgz
+tar -xzf onnxruntime-linux-x64-1.17.0.tgz
+sudo cp onnxruntime-linux-x64-1.17.0/lib/libonnxruntime.so* /usr/local/lib/
+sudo ldconfig
+```
+
+或指定环境变量：
+
+```bash
+export ORT_DYLIB_PATH=/usr/local/lib/libonnxruntime.so
+```
+
+**Linux (aarch64/ARM64):**
+
+```bash
+wget https://github.com/microsoft/onnxruntime/releases/download/v1.17.0/onnxruntime-linux-aarch64-1.17.0.tgz
+tar -xzf onnxruntime-linux-aarch64-1.17.0.tgz
+sudo cp onnxruntime-linux-aarch64-1.17.0/lib/libonnxruntime.so* /usr/local/lib/
+sudo ldconfig
+```
+
+> 提示：可在 [ONNX Runtime Releases](https://github.com/microsoft/onnxruntime/releases) 查看所有可用版本和平台。
+
+### 构建
 
 ```bash
 # 克隆
@@ -19,6 +64,15 @@ cargo test
 ```
 
 构建产物在 `target/release/invoice`。
+
+### 代理设置
+
+如果处于需要代理的网络环境（如企业网络），下载 OCR 模型时需设置代理环境变量：
+
+```bash
+export HTTPS_PROXY=http://your-proxy:port
+invoice init
+```
 
 ## 使用
 
