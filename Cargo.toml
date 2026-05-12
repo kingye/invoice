@@ -8,7 +8,7 @@ clap = { version = "4", features = ["derive"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 rust_xlsxwriter = "0.79"
 pdf_oxide = { version = "0.3", features = ["ocr"] }
-ureq = { version = "3", features = ["platform-verifier"] }
+reqwest = { version = "0.12", features = ["blocking", "native-tls"] }
 roxmltree = "0.20"
 zip = "2"
 serde = { version = "1", features = ["derive"] }

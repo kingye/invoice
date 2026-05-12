@@ -71,21 +71,17 @@ pub fn download_models() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn download_file_atomic(url: &str, path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-    let tls_config = ureq::tls::TlsConfig::builder()
-        .root_certs(ureq::tls::RootCerts::PlatformVerifier)
-        .build();
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .tls_config(tls_config)
-        .build()
-        .into();
+    // reqwest automatically picks up HTTPS_PROXY / HTTP_PROXY / ALL_PROXY from environment
+    let client = reqwest::blocking::Client::builder()
+        .use_native_tls()
+        .build()?;
 
     let tmp_path = path.with_extension("tmp");
 
     let result = (|| -> Result<(), Box<dyn std::error::Error>> {
-        let response = agent.get(url).call()?;
-        let mut reader = response.into_body().into_reader();
+        let mut response = client.get(url).send()?.error_for_status()?;
         let mut file = fs::File::create(&tmp_path)?;
-        std::io::copy(&mut reader, &mut file)?;
+        response.copy_to(&mut file)?;
         file.flush()?;
         Ok(())
     })();
