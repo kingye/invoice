@@ -243,7 +243,7 @@ invoice mcp
 | `invoice_show` | 查看发票详情 |
 | `invoice_edit` | 编辑发票字段 |
 | `invoice_delete` | 删除发票 |
-| `invoice_import` | 从文件导入发票（PDF/XML/OFD/ZIP） |
+| `invoice_import` | 从文件导入发票（PDF） |
 | `invoice_close` | 月结/年结 |
 | `invoice_export` | 导出报表 |
 
