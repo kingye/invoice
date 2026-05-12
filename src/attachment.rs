@@ -40,7 +40,11 @@ pub fn add_attachment(
         total_written += bytes_read as u64;
     }
 
-    let hash_hex = hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect::<String>();
+    let hash_hex = hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect::<String>();
     let db_path = format!(".invoice/data/{}/{}", invoice_number, filename);
 
     let att = models::Attachment {
@@ -104,7 +108,11 @@ mod tests {
 
         let mut hasher = Sha256::new();
         hasher.update(b"hello world attachment");
-        let expected_hash = hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect::<String>();
+        let expected_hash = hasher
+            .finalize()
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<String>();
         assert_eq!(atts[0].file_hash, expected_hash);
     }
 

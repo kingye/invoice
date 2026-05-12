@@ -9,6 +9,7 @@ mod extract_xml;
 mod import;
 mod models;
 mod ocr;
+mod ops;
 mod report;
 
 use clap::Parser;
