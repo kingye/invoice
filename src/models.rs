@@ -51,6 +51,14 @@ pub struct Attachment {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ExportResult {
+    pub detail_path: String,
+    pub summary_path: String,
+    pub output_dir: String,
+    pub period: String,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Closing {
     pub id: i64,
