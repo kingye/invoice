@@ -372,8 +372,7 @@ fn cmd_edit(
             }
         }
         Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("closed period") {
+            if e.downcast_ref::<ops::InvoiceError>().is_some() {
                 println!(
                     "Error: Invoice #{} is in a closed period and cannot be modified",
                     id
@@ -397,8 +396,7 @@ fn cmd_delete(id: i64) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("closed period") {
+            if e.downcast_ref::<ops::InvoiceError>().is_some() {
                 println!(
                     "Error: Invoice #{} is in a closed period and cannot be deleted",
                     id
@@ -427,11 +425,16 @@ fn cmd_close(month: Option<&str>, year: Option<&str>) -> Result<(), Box<dyn std:
             period, period
         ),
         Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("already closed") {
-                println!("Error: Period {} is already closed", period);
-            } else if msg.contains("No invoices") {
-                println!("Error: No invoices found for period {}", period);
+            if let Some(inv_err) = e.downcast_ref::<ops::InvoiceError>() {
+                match inv_err {
+                    ops::InvoiceError::AlreadyClosed(_) => {
+                        println!("Error: Period {} is already closed", period);
+                    }
+                    ops::InvoiceError::NoInvoices(_) => {
+                        println!("Error: No invoices found for period {}", period);
+                    }
+                    _ => return Err(e),
+                }
             } else {
                 return Err(e);
             }
@@ -473,8 +476,7 @@ fn cmd_export(
             );
         }
         Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("No invoices") {
+            if let Some(ops::InvoiceError::NoInvoices(_)) = e.downcast_ref::<ops::InvoiceError>() {
                 println!("No invoices found for period {}", period);
                 return Ok(());
             }

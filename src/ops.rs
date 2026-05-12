@@ -1,4 +1,5 @@
 use rusqlite::Connection;
+use std::fmt;
 
 use crate::attachment;
 use crate::closing;
@@ -6,6 +7,42 @@ use crate::db;
 use crate::import;
 use crate::models;
 use crate::report;
+
+#[derive(Debug)]
+pub enum InvoiceError {
+    ClosedPeriod(String),
+    AlreadyClosed(String),
+    NoInvoices(String),
+    Other(Box<dyn std::error::Error>),
+}
+
+impl fmt::Display for InvoiceError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InvoiceError::ClosedPeriod(msg) => write!(f, "{}", msg),
+            InvoiceError::AlreadyClosed(msg) => write!(f, "{}", msg),
+            InvoiceError::NoInvoices(msg) => write!(f, "{}", msg),
+            InvoiceError::Other(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+impl std::error::Error for InvoiceError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            InvoiceError::Other(e) => Some(e.as_ref()),
+            _ => None,
+        }
+    }
+}
+
+fn is_period_already_closed_err(e: &dyn std::error::Error) -> bool {
+    e.to_string().contains("already closed")
+}
+
+fn is_no_invoices_err(e: &dyn std::error::Error) -> bool {
+    e.to_string().contains("No invoices")
+}
 
 pub fn open_db() -> Result<Connection, Box<dyn std::error::Error>> {
     let conn = db::init_db()?;
@@ -134,7 +171,9 @@ pub fn edit_invoice(
     attach_paths: &[String],
 ) -> Result<usize, Box<dyn std::error::Error>> {
     if closing::check_invoice_closed(conn, id)? {
-        return Err("Invoice is in a closed period and cannot be modified".into());
+        return Err(Box::new(InvoiceError::ClosedPeriod(
+            "Invoice is in a closed period and cannot be modified".to_string(),
+        )));
     }
 
     let updates = models::InvoiceUpdate {
@@ -168,7 +207,9 @@ pub fn edit_invoice(
 
 pub fn delete_invoice(conn: &Connection, id: i64) -> Result<usize, Box<dyn std::error::Error>> {
     if closing::check_invoice_closed(conn, id)? {
-        return Err("Invoice is in a closed period and cannot be deleted".into());
+        return Err(Box::new(InvoiceError::ClosedPeriod(
+            "Invoice is in a closed period and cannot be deleted".to_string(),
+        )));
     }
     Ok(db::delete_invoice(conn, id)?)
 }
@@ -230,7 +271,18 @@ pub fn close_period(
     close_type: closing::CloseType,
     period: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    closing::close_period(conn, close_type, period)
+    match closing::close_period(conn, close_type, period) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            if is_period_already_closed_err(e.as_ref()) {
+                Err(Box::new(InvoiceError::AlreadyClosed(e.to_string())))
+            } else if is_no_invoices_err(e.as_ref()) {
+                Err(Box::new(InvoiceError::NoInvoices(e.to_string())))
+            } else {
+                Err(e)
+            }
+        }
+    }
 }
 
 pub fn export_reports(
@@ -241,7 +293,10 @@ pub fn export_reports(
 ) -> Result<(Vec<models::Invoice>, String, String), Box<dyn std::error::Error>> {
     let invoices = closing::query_invoices_for_period(conn, close_type, period)?;
     if invoices.is_empty() {
-        return Err(format!("No invoices found for period {}", period).into());
+        return Err(Box::new(InvoiceError::NoInvoices(format!(
+            "No invoices found for period {}",
+            period
+        ))));
     }
     std::fs::create_dir_all(output_dir)?;
     let detail_path = format!("{}/明细表_{}.xlsx", output_dir, period);
