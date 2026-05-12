@@ -118,6 +118,8 @@ pub enum Commands {
         remark: Option<String>,
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        ocr_model_dir: Option<String>,
     },
 }
 
@@ -196,7 +198,14 @@ pub fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             category,
             remark,
             dry_run,
-        } => cmd_import(&path, category.as_deref(), remark.as_deref(), dry_run),
+            ocr_model_dir,
+        } => cmd_import(
+            &path,
+            category.as_deref(),
+            remark.as_deref(),
+            dry_run,
+            ocr_model_dir.as_deref(),
+        ),
     }
 }
 
@@ -214,6 +223,25 @@ fn cmd_init() -> Result<(), Box<dyn std::error::Error>> {
         "Initialized invoice database in {}/.invoice/invoice.db",
         cwd.display()
     );
+
+    if crate::ocr::model_files_exist() {
+        println!(
+            "OCR models already exist at {}",
+            crate::ocr::ocr_model_dir().display()
+        );
+    } else {
+        println!("Downloading OCR models...");
+        if let Err(e) = crate::ocr::download_models() {
+            eprintln!("Warning: Failed to download OCR models: {}", e);
+            println!("You can manually download them later with `invoice init`");
+        } else {
+            println!(
+                "OCR models downloaded to {}",
+                crate::ocr::ocr_model_dir().display()
+            );
+        }
+    }
+
     Ok(())
 }
 
@@ -477,9 +505,33 @@ fn cmd_import(
     category: Option<&str>,
     remark: Option<&str>,
     dry_run: bool,
+    ocr_model_dir: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let extracted = import::extract_invoice(path)?;
+    let ocr_dir = match ocr_model_dir {
+        Some(dir) => Some(dir.to_string()),
+        None if crate::ocr::model_files_exist() => Some(
+            crate::ocr::ocr_model_dir()
+                .to_str()
+                .unwrap_or("")
+                .to_string(),
+        ),
+        None => None,
+    };
+
+    let extracted = import::extract_invoice_with_ocr(path, ocr_dir.as_deref())?;
     let mut inv = extracted;
+
+    if inv.number.is_empty() && inv.seller_name.is_empty() && ocr_dir.is_none() {
+        let ext = std::path::Path::new(path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+        if ext == "pdf" && !crate::ocr::model_files_exist() {
+            eprintln!(
+                "Hint: No text extracted from PDF. OCR models not found — run `invoice init` to download them."
+            );
+        }
+    }
     if let Some(cat) = category {
         inv.category = cat.to_string();
     }
