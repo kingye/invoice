@@ -3,6 +3,7 @@ mod attachment;
 mod cli;
 mod closing;
 mod db;
+mod mcp;
 mod extract_ofd;
 mod extract_pdf;
 mod extract_xml;

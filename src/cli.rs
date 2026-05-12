@@ -117,6 +117,7 @@ pub enum Commands {
         #[arg(long)]
         ocr_model_dir: Option<String>,
     },
+    Mcp,
 }
 
 pub fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
@@ -202,6 +203,10 @@ pub fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             dry_run,
             ocr_model_dir.as_deref(),
         ),
+        Commands::Mcp => {
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(crate::mcp::run_server())
+        }
     }
 }
 
