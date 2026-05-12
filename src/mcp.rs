@@ -81,6 +81,7 @@ pub struct DeleteInvoiceParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ImportInvoiceParams {
+    #[schemars(description = "PDF 发票文件路径")]
     pub path: String,
     pub category: Option<String>,
     pub remark: Option<String>,
@@ -258,7 +259,7 @@ impl InvoiceMcp {
         }
     }
 
-    #[rmcp::tool(description = "Import an invoice from a file (PDF, XML, OFD, ZIP). Extracts invoice data automatically.")]
+    #[rmcp::tool(description = "从 PDF 文件导入发票，自动提取发票号码、日期、金额、税率、买卖方等信息")]
     async fn invoice_import(&self, Parameters(params): Parameters<ImportInvoiceParams>) -> String {
         match blocking(move || {
             let inv = ops::import_invoice(
