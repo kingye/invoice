@@ -335,6 +335,7 @@ impl InvoiceMcp {
 pub async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
     let server = InvoiceMcp;
     let transport = rmcp::transport::io::stdio();
-    rmcp::serve_server(server, transport).await?;
+    let service = rmcp::serve_server(server, transport).await?;
+    service.waiting().await?;
     Ok(())
 }
