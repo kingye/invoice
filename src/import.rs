@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use crate::extract_image;
 use crate::extract_ofd;
 use crate::extract_pdf;
 use crate::extract_xml;
@@ -28,6 +29,7 @@ pub fn extract_invoice_with_ocr(
 
     let mut inv = match ext.as_str() {
         "pdf" => extract_from_pdf(path, ocr_model_dir)?,
+        "jpg" | "jpeg" | "png" => extract_from_image(path, ocr_model_dir)?,
         "xml" => extract_from_xml(path)?,
         "ofd" => extract_from_ofd(path)?,
         "zip" => extract_from_zip(path)?,
@@ -49,6 +51,14 @@ fn extract_from_pdf(
 ) -> Result<models::Invoice, Box<dyn std::error::Error>> {
     let data = std::fs::read(path)?;
     extract_pdf::extract_from_pdf_with_ocr(&data, ocr_model_dir)
+}
+
+fn extract_from_image(
+    path: &str,
+    ocr_model_dir: Option<&str>,
+) -> Result<models::Invoice, Box<dyn std::error::Error>> {
+    let data = std::fs::read(path)?;
+    extract_image::extract_from_image(&data, ocr_model_dir)
 }
 
 fn extract_from_xml(path: &str) -> Result<models::Invoice, Box<dyn std::error::Error>> {
