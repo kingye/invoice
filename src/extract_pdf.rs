@@ -58,7 +58,7 @@ fn try_ocr_extraction(
     }
 }
 
-fn parse_invoice_text(text: &str, inv: &mut models::Invoice) {
+pub(crate) fn parse_invoice_text(text: &str, inv: &mut models::Invoice) {
     let normalized = match Regex::new(r"\s+") {
         Ok(re) => re.replace_all(text, " ").to_string(),
         Err(_) => return,
