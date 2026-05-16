@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+image = "0.25"
 rusqlite = { version = "0.34", features = ["bundled"] }
 rust_xlsxwriter = "0.95"
 pdf_oxide = { version = "0.3", features = ["ocr"] }

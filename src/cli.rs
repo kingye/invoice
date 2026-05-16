@@ -106,6 +106,7 @@ pub enum Commands {
         #[arg(long, default_value = ".")]
         output: String,
     },
+    #[command(about = "Import invoices from PDF, XML, OFD, JPG, PNG, or ZIP files")]
     Import {
         path: String,
         #[arg(long)]
