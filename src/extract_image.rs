@@ -14,7 +14,7 @@ pub(crate) fn extract_from_image(
         engine.ocr_image(&img)?
     };
 
-    let text = ocr_output.text();
+    let text = ocr_output.text_in_reading_order();
     let mut inv = models::Invoice::default();
     crate::extract_pdf::parse_invoice_text(&text, &mut inv);
 
